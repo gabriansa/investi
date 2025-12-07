@@ -1,0 +1,249 @@
+from typing import Literal
+from pydantic import BaseModel
+from agents import RunContextWrapper, function_tool
+from src.agent.context import Context
+from src.api.indicators import IndicatorLiteral
+from src.tools import load_prompt
+
+
+@function_tool
+def fetch_historical_price_data(
+    ctx: RunContextWrapper[Context],
+    ticker_symbol: str,
+    interval: Literal["1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h", "4h", "1d", "5d", "1wk", "1mo", "3mo"],
+    outputsize: int = 20,
+    start_date: str = None, 
+    end_date: str = None,
+    ):
+    """
+    Retrieves historical OHLCV (Open, High, Low, Close, Volume) price data for a given ticker symbol.
+    Ideal for analyzing price trends, patterns, and historical performance purely based on price action.
+    Returns a time series of price points with timestamps.
+
+    Args:
+        ticker_symbol (required): Stock ticker or crypto symbol (e.g., "AAPL", "BTC-USD").
+        interval (required): Time interval between data points. Options: 1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 4h, 1d, 5d, 1wk, 1mo, 3mo.
+        outputsize (optional): Number of data points to retrieve (default: 20).
+        start_date (optional): Start date in YYYY-MM-DD format (e.g., "2024-01-01"). Overrides outputsize if provided.
+        end_date (optional): End date in YYYY-MM-DD format (e.g., "2024-12-31"). Defaults to today if not provided.
+        return_type (optional): Format to return data in. Options: "raw" for raw data (default), "graph" for a price chart image.
+    """
+    success, data = ctx.context.yfinance_api.time_series(
+        symbol=ticker_symbol, 
+        interval=interval, 
+        outputsize=outputsize, 
+        start_date=start_date, 
+        end_date=end_date
+    )
+    if success:
+        return data
+    else:
+        return {"error": data}
+
+@function_tool
+def get_current_market_quote(
+    ctx: RunContextWrapper[Context],
+    ticker_symbol: str,
+    interval: Literal["1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h", "4h", "1d", "5d", "1wk", "1mo", "3mo"],
+    rolling_period_hours: int = 24,
+    ):
+    """
+    Retrieves a real-time snapshot of current market data for a given ticker symbol.
+    Returns key metrics including: current price, open/high/low/close, volume, average volume,
+    price change (absolute and percent), previous close, 52-week high/low range, extended hours
+    pricing, exchange info, and currency. Use this for quick market overviews or current state checks.
+
+    Args:
+        ticker_symbol (required): Stock ticker or crypto symbol (e.g., "AAPL", "BTC-USD").
+        interval (required): Time interval for quote data. Options: 1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 4h, 1d, 5d, 1wk, 1mo, 3mo.
+        rolling_period_hours (optional): Time window in hours to calculate rolling price change (default: 24).
+    """
+    success, data = ctx.context.yfinance_api.quote(
+        symbol=ticker_symbol, 
+        interval=interval, 
+        rolling_period=rolling_period_hours
+    )
+    if success:
+        return data
+    else:
+        return {"error": data}
+
+@function_tool
+def find_screeners(
+    ctx: RunContextWrapper[Context],
+    search_query: str | None = None,
+    group_name: Literal["Sectors & Industries", "ETFs & Mutual Funds", "Cryptocurrency", "Market Movers (Stock Price)", "Valuation & Strategy", "Sentiment & Interest", "Institutional & Guru Holdings", "Options"] | None = None,
+    subgroup_name: Literal["Basic Materials", "Consumer Discretionary (Cyclical)", "Consumer Staples", "Energy", "Financials", "Healthcare", "Industrials", "Information Technology", "Materials", "Utilities"] | None = None,
+    ):
+    """
+    Finds available screeners using either natural language search OR browsing by category.
+    Returns a list of screener names and descriptions that can then be used with execute_screener.
+    
+    If search_query is provided, it takes priority and overrides group_name/subgroup_name.
+
+    Args:
+        search_query (optional): Natural language search (e.g., "tech gainers", "German stocks winning today", "crypto stats"). Takes priority if provided.
+        group_name (optional): Browse by category (e.g., "Market Movers (Stock Price)", "Cryptocurrency").
+        subgroup_name (optional): Sector subgroup, only applicable when group_name is "Sectors & Industries".
+    """
+    # Validate that at least one search method is provided
+    if not search_query and not group_name:
+        return {"error": "Must provide either search_query or group_name"}
+    
+    # Get available screeners (needed for both methods)
+    success, available_screeners = ctx.context.yfinance_api.available_screeners()
+    if not success:
+        return {"error": available_screeners}
+    
+    # Method 1: Search by natural language query
+    if search_query:
+        class ScreenerMatch(BaseModel):
+            key: str
+            relevance_score: float  # 0.0 to 1.0
+
+        class ScreenerResponse(BaseModel):
+            matches: list[ScreenerMatch]
+
+        available_screeners_str = "\n".join([f"{screener['name']}: {screener['description']}" for screener in available_screeners])
+
+        system_prompt = load_prompt("find_screeners.md").format(available_screeners=available_screeners_str)
+
+        try:
+            completion = ctx.context.client.chat.completions.parse(
+                model=ctx.context.screener_finder_model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": search_query}
+                ],
+                response_format=ScreenerResponse
+            )   
+            matches = completion.choices[0].message.parsed.matches
+            screener_map = {s["name"]: s for s in available_screeners}
+            relevant_screeners = [
+                {**screener_map[match.key], "relevance_score": match.relevance_score} 
+                for match in matches 
+                if match.key in screener_map
+            ]
+            return relevant_screeners
+        except Exception as e:
+            return {"error": f"Failed to search for screeners: {str(e)}"}
+    
+    # Method 2: Browse by group/category
+    else:  # group_name is provided
+        success, relevant_screener_keys = ctx.context.yfinance_api.get_screeners_by_group(group_name=group_name, subgroup_name=subgroup_name)
+        
+        if success:
+            screener_map = {s["name"]: s for s in available_screeners}
+            relevant_screeners = [
+                screener_map[key] for key in relevant_screener_keys 
+                if key in screener_map
+            ]
+            return relevant_screeners
+        else:
+            return {"error": relevant_screener_keys}
+
+@function_tool
+def execute_screener(
+    ctx: RunContextWrapper[Context],
+    screener_name: str,
+    outputsize: int = 30,
+    ):
+    """
+    Executes a screener and returns the ranked results. Use find_screeners first to find valid screener names.
+    Returns a ranked list of symbols matching the screener criteria.
+
+    Args:
+        screener_name (required): The exact screener name to execute (obtained from screener discovery tools).
+        outputsize (optional): Number of results to return (default: 30).
+    """
+    success, data = ctx.context.yfinance_api.screener(
+        screener_name=screener_name,
+        outputsize=outputsize
+    )
+    if success:
+        return data
+    else:
+        return {"error": data}
+
+@function_tool
+def search_for_symbols(
+    ctx: RunContextWrapper[Context],
+    search_query: str, 
+    outputsize: int = 10,
+    ):
+    """
+    Searches for ticker symbols by matching against the ticker itself using similarity scoring.
+    Use when you have a guessed ticker symbol and want to find the correct or similar tickers.
+    Returns matching symbols with basic info (name, exchange, type) sorted by similarity.
+
+    Args:
+        search_query (required): Guessed ticker symbol (e.g., "AAPL", "BTC-USD", "TSLA").
+        outputsize (optional): Maximum number of results to return, 1-50 (default: 10).
+    """
+    if outputsize > 50 or outputsize < 1:
+        return {"error": f"outputsize must be between 1 and 50, got {outputsize}"}
+    
+    success, data = ctx.context.alpaca_api.symbol_search(query=search_query, outputsize=outputsize)
+    if success:
+        return data
+    else:
+        return {"error": data}
+
+@function_tool
+def get_company_profile(
+    ctx: RunContextWrapper[Context],
+    ticker_symbol: str,
+    ):
+    """
+    Retrieves comprehensive company/asset information for fundamental research.
+    Returns: business description, sector, industry, headquarters, executive team, market cap,
+    P/E ratios, dividend info, 52-week performance, analyst ratings, revenue, margins, and more.
+    Use to understand what a company does or gather fundamentals for investment decisions.
+
+    Args:
+        ticker_symbol (required): Stock ticker or crypto symbol (e.g., "AAPL", "BTC-USD").
+    """
+    success, data = ctx.context.yfinance_api.profile(symbol=ticker_symbol)
+    if success:
+        return data
+    else:
+        return {"error": data}
+
+@function_tool
+def calculate_technical_indicator(
+    ctx: RunContextWrapper[Context],
+    ticker_symbol: str,
+    indicator: IndicatorLiteral,
+    interval: Literal["1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h", "4h", "1d", "5d", "1wk", "1mo", "3mo"] = "1d",
+    outputsize: int = 30,
+    benchmark_symbol: str | None = None,
+    ):
+    """
+    Computes technical indicators for a given ticker symbol. Supports: EMA (trend), MACD (momentum),
+    ADX (trend strength), RSI (overbought/oversold), Stochastic, Bollinger Bands (volatility),
+    ATR (volatility), OBV (volume), MFI (money flow), SAR (trend reversal), Typical Price, Beta
+    (market correlation), and PPO (momentum). Use for technical analysis and trading signals.
+
+    Args:
+        ticker_symbol (required): Stock ticker or crypto symbol (e.g., "AAPL", "BTC-USD").
+        indicator (required): Technical indicator to compute (ema, macd, adx, rsi, stoch, bbands, atr, obv, mfi, sar, typprice, beta, ppo).
+        interval (optional): Time interval for analysis. Options: 1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 4h, 1d, 5d, 1wk, 1mo, 3mo (default: 1d).
+        outputsize (optional): Number of data points to return (default: 30).
+        benchmark_symbol (optional): Benchmark symbol for beta calculation only.
+    """
+    
+    kwargs = {}
+    if indicator == 'beta':
+        kwargs['benchmark_symbol'] = benchmark_symbol
+
+    success, data = ctx.context.yfinance_api.calculate_indicator(
+        symbol=ticker_symbol, 
+        indicator_name=indicator, 
+        interval=interval, 
+        outputsize=outputsize,
+        **kwargs
+    )
+    if success:
+        return data
+    else:
+        return {"error": data}

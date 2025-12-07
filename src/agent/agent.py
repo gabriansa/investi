@@ -1,0 +1,174 @@
+from src.agent.context import Context
+from agents import Agent, Runner, set_tracing_export_api_key, OpenAIChatCompletionsModel, set_trace_processors, InputGuardrailTripwireTriggered
+from langsmith.wrappers import OpenAIAgentsTracingProcessor
+from openai import AsyncOpenAI, OpenAI
+from src.agent.prompt_builder import get_analyst_prompt, get_portfolio_manager_prompt, get_trader_prompt, get_guardrail_prompt, get_technical_analyst_prompt
+from src.agent.caching import enable_caching
+from src.agent.guardrails import create_portfolio_guardrail
+
+import os
+from dotenv import load_dotenv
+
+from src.api.yahoo_finance import YFinanceAPI
+from src.api.alpaca import AlpacaAPI
+
+from src.tools.assets import fetch_historical_price_data, get_current_market_quote, find_screeners, execute_screener, search_for_symbols, get_company_profile, calculate_technical_indicator
+from src.tools.notes import create_note, search_notes, get_related_notes
+from src.tools.orders import create_order, get_orders, cancel_orders
+from src.tools.positions import get_positions, close_position
+from src.tools.charts import get_candlestick_chart
+from src.tools.tasks import set_one_time_task, set_recurring_task, set_conditional_task, get_tasks, remove_task
+from src.tools.searches import search_web, search_sec_filings
+from src.tools.watchlists import get_watchlist, create_watchlist, remove_watchlist, modify_watchlist_symbols
+from src.tools.write_todos import write_todos
+
+
+load_dotenv()
+
+
+class InvestiAgent:
+    def __init__(
+        self, 
+        config: dict,
+        user_id: int,
+        openrouter_api_key: str,
+        alpaca_api_key: str,
+        alpaca_secret_key: str,
+        ):
+        
+        # Extract config values
+        agents_config = config['agents']
+        self.portfolio_manager_model = agents_config['portfolio_manager']['model_name']
+        self.trader_model = agents_config['trader']['model_name']
+        self.analyst_model = agents_config['analyst']['model_name']
+        self.technical_analyst_model = agents_config['technical_analyst']['model_name']
+        self.guardrail_model = agents_config['guardrail']['model_name']
+        self.embedding_model = config['embeddings']['model_name']
+        self.web_search_model = config['tools']['web_search_model']
+        self.screener_finder_model = config['tools']['screener_finder_model']
+        self.portfolio_manager_max_turns = agents_config['portfolio_manager']['max_turns']
+        self.trader_max_turns = agents_config['trader']['max_turns']
+        self.analyst_max_turns = agents_config['analyst']['max_turns']
+        self.technical_analyst_max_turns = agents_config['technical_analyst']['max_turns']
+        
+        # User credentials
+        self.openrouter_api_key = openrouter_api_key
+        self.alpaca_api_key = alpaca_api_key
+        self.alpaca_secret_key = alpaca_secret_key
+
+        # Enable LangSmith tracing
+        set_trace_processors([OpenAIAgentsTracingProcessor()])
+        # set_tracing_export_api_key(os.getenv("OPENAI_API_KEY"))
+        
+        self.cached_client = enable_caching(
+            AsyncOpenAI(base_url=os.getenv("OPENROUTER_BASE_URL"), api_key=self.openrouter_api_key)
+        )
+
+        # Context
+        self.context = Context(
+            client=OpenAI(base_url=os.getenv("OPENROUTER_BASE_URL"), api_key=self.openrouter_api_key),
+            todos=[],
+            yfinance_api=YFinanceAPI(),
+            alpaca_api=AlpacaAPI(api_key=self.alpaca_api_key,secret_key=self.alpaca_secret_key),
+            user_id=user_id,
+            embedding_model=self.embedding_model,
+            web_search_model=self.web_search_model,
+            screener_finder_model=self.screener_finder_model
+        )
+
+        self._build_agents()
+
+    def _build_agents(self):
+        # Create guardrail function
+        self.portfolio_guardrail = create_portfolio_guardrail(
+            instructions=get_guardrail_prompt(),
+            model=self.guardrail_model,
+            openai_client=self.cached_client
+        )
+
+        # Technical Analyst Sub-Agent
+        self.technical_analyst = Agent[Context](
+            name="technical_analyst",
+            instructions=get_technical_analyst_prompt(),
+            tools=[
+                fetch_historical_price_data, get_current_market_quote, calculate_technical_indicator,
+                get_candlestick_chart,
+            ],
+            model=OpenAIChatCompletionsModel(model=self.technical_analyst_model, openai_client=self.cached_client)
+        )
+        
+        # Analyst Agent
+        self.analyst = Agent[Context](
+            name="analyst",
+            instructions=get_analyst_prompt(self.context.user_id),
+            tools=[
+                get_current_market_quote, find_screeners, execute_screener, search_for_symbols, get_company_profile,
+                create_note, search_notes, get_related_notes,
+                set_one_time_task, set_recurring_task, set_conditional_task, get_tasks, remove_task,
+                search_web, search_sec_filings,
+                get_watchlist, create_watchlist, remove_watchlist, modify_watchlist_symbols,
+                write_todos,
+                self.technical_analyst.as_tool(
+                    tool_name="technical_analysis",
+                    tool_description="Use this tool to analyze the technical indicators of a stock or crypto asset.",
+                    max_turns=self.technical_analyst_max_turns
+                ),
+                ],
+            model=OpenAIChatCompletionsModel(model=self.analyst_model, openai_client=self.cached_client)
+        )
+
+        # Trader Agent
+        self.trader = Agent[Context](
+            name="trader",
+            instructions=get_trader_prompt(self.context.user_id),
+            tools=[
+                create_note, search_notes, get_related_notes,
+                create_order, get_orders, cancel_orders,
+                get_positions, close_position,
+                get_current_market_quote,
+                set_one_time_task, set_recurring_task, set_conditional_task, get_tasks, remove_task,
+                write_todos,
+            ],
+            model=OpenAIChatCompletionsModel(model=self.trader_model, openai_client=self.cached_client)
+        )
+
+        # Portfolio Manager Agent
+        self.portfolio_manager = Agent[Context](
+            name="portfolio_manager",
+            instructions=get_portfolio_manager_prompt(self.context.user_id),
+            tools=[
+                find_screeners, execute_screener,
+                get_current_market_quote,
+                create_note, search_notes, get_related_notes,
+                get_orders,
+                get_positions,
+                set_one_time_task, set_recurring_task, set_conditional_task, get_tasks, remove_task,
+                search_web,
+                get_watchlist, create_watchlist, remove_watchlist, modify_watchlist_symbols,
+                write_todos,
+                self.analyst.as_tool(
+                    tool_name="analyst",
+                    tool_description="Use this tool to analyze a stock or crypto asset.",
+                    max_turns=self.analyst_max_turns
+                ),
+                self.trader.as_tool(
+                    tool_name="trader",
+                    tool_description="Use this tool to place orders for stocks and crypto assets.",
+                    max_turns=self.trader_max_turns
+                ),
+            ],
+            model=OpenAIChatCompletionsModel(model=self.portfolio_manager_model, openai_client=self.cached_client),
+            input_guardrails=[self.portfolio_guardrail]
+        )
+
+    async def run(self, input: str) -> str:
+        try:
+            result = await Runner.run(
+                starting_agent=self.portfolio_manager,
+                input=input,
+                context=self.context,
+                max_turns=self.portfolio_manager_max_turns
+            )
+            return result.final_output
+        except InputGuardrailTripwireTriggered:
+            return "Sorry, I can't help with that. Please ask about investing, trading, or portfolio management."

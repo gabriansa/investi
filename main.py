@@ -1,0 +1,74 @@
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
+import asyncio
+import os
+import yaml
+from src.services.database import init_database
+from src.services.credit_monitor import check_credits
+from src.services.task_engine import check_tasks
+from src.bot.commands import (
+    start_command, 
+    set_alpaca_command, 
+    set_openrouter_command,
+    status_command,
+    delete_account_command,
+)
+from src.bot.handlers import handle_message, error_handler
+from dotenv import load_dotenv
+
+load_dotenv()
+
+token = os.getenv('TELEGRAM_BOT_TOKEN')
+
+# Load config
+with open('config.yaml', 'r') as f:
+    config = yaml.safe_load(f)
+
+
+async def post_init(application: Application):
+    """Initialize background tasks after bot starts."""
+    
+    async def send_notification(message: str, user_id: int):
+        try:
+            await application.bot.send_message(chat_id=user_id, text=message, parse_mode='Markdown')
+        except Exception as e:
+            print(f"Error sending notification: {e}")
+    
+    # Start task engine
+    asyncio.create_task(check_tasks(
+        send_notification,
+        config=config
+    ))
+    print("Task engine started")
+    
+    # Start credit monitoring
+    asyncio.create_task(check_credits(
+        send_notification,
+        config=config
+    ))
+    print("Credit monitoring started")
+
+
+if __name__ == "__main__":
+    print("Starting bot...")
+    
+    # Initialize database
+    init_database()
+    print("Database initialized")
+    
+    # Build application
+    app = Application.builder().token(token).build()
+
+    app.add_handler(CommandHandler("start", lambda update, context: start_command(update)))
+    app.add_handler(CommandHandler("status", lambda update, context: status_command(update)))
+    app.add_handler(CommandHandler("set_alpaca", lambda update, context: set_alpaca_command(update, context)))
+    app.add_handler(CommandHandler("set_openrouter", lambda update, context: set_openrouter_command(update, context)))
+    app.add_handler(CommandHandler("delete_account", lambda update, context: delete_account_command(update)))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, lambda update, context: handle_message(update, config)))
+    app.add_error_handler(error_handler)
+    
+    # Initialize background tasks after bot starts
+    app.post_init = lambda app: post_init(app)
+
+    # Run bot
+    print("Bot is running...")
+    app.run_polling(poll_interval=3, close_loop=False, drop_pending_updates=True)

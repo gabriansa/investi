@@ -1,0 +1,50 @@
+from datetime import datetime, timezone
+
+
+def validate_date(
+    date_str,
+    input_format="%Y-%m-%d",
+    output_format="%Y-%m-%d",
+    tz=timezone.utc,
+    check_future=False
+) -> tuple[bool, str | None]:
+    """
+    Validates a date string format and converts it to another format if specified.
+    
+    Args:
+        date_str: Date string to validate (can be None)
+        input_format: Format to parse from (e.g., "%Y-%m-%d"). Defaults to "%Y-%m-%d".
+        output_format: Format to convert to (e.g., "%m/%d/%Y" or "%Y-%m-%d %H:%M:%S %Z"). Defaults to "%Y-%m-%d".
+                      If format includes %Z or %z, the specified timezone will be applied.
+        tz: Timezone to apply when output format includes timezone specifiers. Defaults to UTC.
+        check_future: If True, validates that the date is in the future. Defaults to False.
+    """
+    try:
+        if date_str is None:
+            return True, None
+        
+        # If input format expects microseconds (%f), truncate fractional seconds to 6 digits
+        if '%f' in input_format and '.' in date_str:
+            parts = date_str.split('.')
+            if len(parts) == 2:
+                date_str = f"{parts[0]}.{parts[1][:6].ljust(6, '0')}"
+        
+        dt = datetime.strptime(date_str, input_format)
+        
+        # Add timezone if output format includes timezone specifiers or if checking future
+        if output_format and ('%Z' in output_format or '%z' in output_format):
+            dt = dt.replace(tzinfo=tz)
+        elif check_future and dt.tzinfo is None:
+            dt = dt.replace(tzinfo=tz)
+        
+        # Check if date is in the future if required
+        if check_future:
+            now = datetime.now(tz)
+            if dt < now:
+                return False, None
+        
+        if output_format:
+            return True, dt.strftime(output_format)
+        return True, dt.strftime()
+    except:
+        return False, None

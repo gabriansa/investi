@@ -275,7 +275,7 @@ class UserService:
                 ticker = f"*{task['ticker_symbol']}* " if task['ticker_symbol'] else ""
                 task_time = task['task_datetime'].split(' ')[0]  # Just show the date
                 desc = task['description'][:60] + "..." if len(task['description']) > 60 else task['description']
-                lines.append(f"• {ticker}`{task_time}`\n  _{desc}_")
+                lines.append(f"• {ticker}`{task_time}`: _{desc}_")
         else:
             lines.append("_No upcoming tasks_")
         
@@ -318,8 +318,7 @@ class UserService:
                     threshold_str = f"${threshold:,.2f}"
                 
                 condition_str = f"{condition_type} {comparison} {threshold_str}"
-                desc = alert['description'][:50] + "..." if len(alert['description']) > 50 else alert['description']
-                lines.append(f"• {ticker}`{condition_str}`\n  _{desc}_")
+                lines.append(f"• {ticker}`{condition_str}`")
         else:
             lines.append("_No active alerts_")
         
@@ -341,7 +340,7 @@ class UserService:
             for wl in watchlists:
                 assets = json.loads(wl['assets']) if isinstance(wl['assets'], str) else wl['assets']
                 asset_count = len(assets)
-                lines.append(f"• *{wl['watchlist_name']}*: `{asset_count}` assets")
+                lines.append(f"• *{wl['watchlist_name']}*: `{asset_count}` assets ({', '.join(assets)})")
         else:
             lines.append("_No watchlists_")
         

@@ -1,8 +1,11 @@
 import traceback
+import logging
 from telegram import Update
 from telegram.ext import ContextTypes
 from src.agent import InvestiAgent
 from src.services.user_service import UserService
+
+logger = logging.getLogger(__name__)
 
 
 async def handle_message(update: Update, config: dict):
@@ -18,14 +21,19 @@ async def _process_message(update: Update, config: dict):
     
     user_service = UserService()
     telegram_user_id = update.effective_user.id
+    username = update.effective_user.username or update.effective_user.first_name or "Unknown"
+    
+    logger.info(f"User request from {username} (ID: {telegram_user_id}): {text[:100]}{'...' if len(text) > 100 else ''}")
     
     user, message = user_service.get_user(telegram_user_id)
     if user is None:
+        logger.warning(f"User {telegram_user_id} not found in database")
         await update.message.reply_text(message, parse_mode='Markdown')
         return
     
     has_enough_credits, message = user_service.has_enough_credits(user['openrouter_api_key'], min_credits_to_run)
     if not has_enough_credits:
+        logger.warning(f"User {telegram_user_id} has insufficient credits")
         await update.message.reply_text(
             message,
             parse_mode='Markdown'
@@ -43,6 +51,8 @@ async def _process_message(update: Update, config: dict):
         alpaca_secret_key=user['alpaca_secret_key']
     )
     result = await agent.run(text)
+    
+    logger.info(f"Completed request for user {telegram_user_id}")
 
     # Try to send with Markdown, fall back to plain text if parsing fails
     try:
@@ -53,6 +63,6 @@ async def _process_message(update: Update, config: dict):
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle errors."""
-    print(f"Update {update} caused error {context.error}")
-    traceback.print_exc()
+    logger.error(f"Update {update} caused error: {context.error}")
+    logger.error(traceback.format_exc())
 

@@ -1,6 +1,9 @@
 import asyncio
+import logging
 from src.api.openrouter import OpenRouterAPI
 from src.services.database import get_db_connection
+
+logger = logging.getLogger(__name__)
 
 
 async def check_credits(send_message_callback, config: dict):
@@ -22,12 +25,13 @@ async def check_credits(send_message_callback, config: dict):
                 if success:
                     remaining = response.get('remaining_credits', 0)
                     if remaining < min_credits_warning:
+                        logger.warning(f"Low credits detected for user {user['telegram_user_id']}: ${remaining:.2f}")
                         await send_message_callback(
                             message=f"⚠️ *Low Credits* - *${remaining:.2f}* remaining\n→ [Top up OpenRouter](https://openrouter.ai/settings/credits)",
                             user_id=user['telegram_user_id']
                         )
                         break
         except Exception as e:
-            print(f"Error checking credits: {e}")
+            logger.error(f"Error checking credits: {e}")
         
         await asyncio.sleep(credit_check_interval_hours * 3600)

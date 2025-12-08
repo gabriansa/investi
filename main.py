@@ -2,6 +2,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters
 import asyncio
 import os
 import yaml
+import logging
 from src.services.database import init_database
 from src.services.credit_monitor import check_credits
 from src.services.task_engine import check_tasks
@@ -13,9 +14,14 @@ from src.bot.commands import (
     delete_account_command,
 )
 from src.bot.handlers import handle_message, error_handler
+from src.utils.logger import setup_logger
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Setup logging
+setup_logger()
+logger = logging.getLogger(__name__)
 
 token = os.getenv('TELEGRAM_BOT_TOKEN')
 
@@ -31,29 +37,29 @@ async def post_init(application: Application):
         try:
             await application.bot.send_message(chat_id=user_id, text=message, parse_mode='Markdown')
         except Exception as e:
-            print(f"Error sending notification: {e}")
+            logger.error(f"Error sending notification to user {user_id}: {e}")
     
     # Start task engine
     asyncio.create_task(check_tasks(
         send_notification,
         config=config
     ))
-    print("Task engine started")
+    logger.info("Task engine started")
     
     # Start credit monitoring
     asyncio.create_task(check_credits(
         send_notification,
         config=config
     ))
-    print("Credit monitoring started")
+    logger.info("Credit monitoring started")
 
 
 if __name__ == "__main__":
-    print("Starting bot...")
+    logger.info("Starting bot...")
     
     # Initialize database
     init_database()
-    print("Database initialized")
+    logger.info("Database initialized")
     
     # Build application
     app = Application.builder().token(token).build()
@@ -70,5 +76,5 @@ if __name__ == "__main__":
     app.post_init = lambda app: post_init(app)
 
     # Run bot
-    print("Bot is running...")
+    logger.info("Bot is running and polling for messages")
     app.run_polling(poll_interval=3, close_loop=False, drop_pending_updates=True)

@@ -1,12 +1,15 @@
 from datetime import datetime, timezone, timedelta
 import json
 import asyncio
+import logging
 from dateutil.relativedelta import relativedelta
 from src.api.yahoo_finance import YFinanceAPI
 from src.api.alpaca import AlpacaAPI
 from src.services.database import get_db_connection
 from src.services.user_service import UserService
 from src.agent.agent import InvestiAgent
+
+logger = logging.getLogger(__name__)
 
 
 async def check_tasks(send_message_callback, config: dict):
@@ -29,7 +32,7 @@ async def check_tasks(send_message_callback, config: dict):
                 if queue.empty():
                     break
             except Exception as e:
-                print(f"Error executing task for user {user_id}: {e}")
+                logger.error(f"Error executing task for user {user_id}: {e}")
         user_queues.pop(user_id, None)
     
     while True:
@@ -67,7 +70,7 @@ async def check_tasks(send_message_callback, config: dict):
                         user_queues[user_id].put_nowait(task)
         
         except Exception as e:
-            print(f"Error checking tasks: {e}")
+            logger.error(f"Error checking tasks: {e}")
         
         await asyncio.sleep(task_check_interval_seconds)
 
@@ -153,6 +156,9 @@ async def _execute_task(task, send_message_callback, min_credits_to_run: float, 
     ticker = task['ticker_symbol'] if task['ticker_symbol'] else None
     description = task['description']
     trigger_type = task['trigger_type']
+    telegram_user_id = task['telegram_user_id']
+    
+    logger.info(f"Task triggered for user {telegram_user_id}: ID={task_id}, Type={trigger_type}, Ticker={ticker or 'None'}")
     
     # No, this is a tuple, not a single string.
     trigger_message = f"🔔 *{trigger_type.replace('_', ' ').title()} Task*"
@@ -164,8 +170,9 @@ async def _execute_task(task, send_message_callback, min_credits_to_run: float, 
     user_service = UserService()
     has_enough_credits, message = user_service.has_enough_credits(task['openrouter_api_key'], min_credits_to_run)
     if not has_enough_credits:
+        logger.warning(f"Task {task_id} for user {telegram_user_id} skipped: insufficient credits")
         queued_task_ids.discard(task_id)  # Allow re-queuing next cycle
-        await send_message_callback(trigger_message + "\n\n_Couldn't run:_\n" + message, task['telegram_user_id'])
+        await send_message_callback(trigger_message + "\n\n_Couldn't run:_\n" + message, telegram_user_id)
         return
     
     await send_message_callback(trigger_message, task['telegram_user_id'])
@@ -191,11 +198,12 @@ async def _execute_task(task, send_message_callback, min_credits_to_run: float, 
     )
 
     result = await agent.run(context_msg)
-    await send_message_callback(result, task['telegram_user_id'])
+    await send_message_callback(result, telegram_user_id)
     
     # Mark task completed after successful execution
     _mark_task_completed(task)
     queued_task_ids.discard(task_id)
+    logger.info(f"Task {task_id} completed for user {telegram_user_id}")
 
 def _mark_task_completed(task):
     """Update task in DB after successful execution."""

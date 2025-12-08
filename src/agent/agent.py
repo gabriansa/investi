@@ -1,6 +1,5 @@
 from src.agent.context import Context
-from agents import Agent, Runner, set_tracing_export_api_key, OpenAIChatCompletionsModel, set_trace_processors, InputGuardrailTripwireTriggered
-from langsmith.wrappers import OpenAIAgentsTracingProcessor
+from agents import Agent, Runner, OpenAIChatCompletionsModel, InputGuardrailTripwireTriggered
 from openai import AsyncOpenAI, OpenAI
 from src.agent.prompt_builder import get_analyst_prompt, get_portfolio_manager_prompt, get_trader_prompt, get_guardrail_prompt, get_technical_analyst_prompt
 from src.agent.caching import enable_caching
@@ -55,10 +54,6 @@ class InvestiAgent:
         self.openrouter_api_key = openrouter_api_key
         self.alpaca_api_key = alpaca_api_key
         self.alpaca_secret_key = alpaca_secret_key
-
-        # Enable LangSmith tracing
-        set_trace_processors([OpenAIAgentsTracingProcessor()])
-        # set_tracing_export_api_key(os.getenv("OPENAI_API_KEY"))
         
         self.cached_client = enable_caching(
             AsyncOpenAI(base_url=os.getenv("OPENROUTER_BASE_URL"), api_key=self.openrouter_api_key)

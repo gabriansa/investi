@@ -16,12 +16,18 @@ from src.bot.commands import (
 from src.bot.handlers import handle_message, error_handler
 from src.utils.logger import setup_logger
 from dotenv import load_dotenv
+from agents import set_trace_processors
+from langsmith.wrappers import OpenAIAgentsTracingProcessor
 
 load_dotenv()
 
 # Setup logging
 setup_logger()
 logger = logging.getLogger(__name__)
+
+# Setup tracing globally once
+set_trace_processors([OpenAIAgentsTracingProcessor()])
+logger.info("LangSmith tracing initialized")
 
 token = os.getenv('TELEGRAM_BOT_TOKEN')
 

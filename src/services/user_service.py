@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 from src.api.alpaca import AlpacaAPI
 from src.api.openrouter import OpenRouterAPI
@@ -43,8 +44,17 @@ class UserService:
             if remaining >= min_credits:
                 return True, f"You have enough credits"
             else:
-                return False, f"⚠️ *Insufficient Credits* - *${remaining:.2f}* remaining\nYou need at least ${min_credits:.0f} to run.\n→ [Top up OpenRouter](https://openrouter.ai/settings/credits)"
-        return False, f"⚠️ *Insufficient Credits*\nYou need at least ${min_credits:.0f} to run.\n→ [Top up OpenRouter](https://openrouter.ai/settings/credits)"
+                return False, (
+                    f"⚠️ **Insufficient Credits**\n\n"
+                    f"You have **${remaining:.2f}** remaining.\n"
+                    f"You need at least **${min_credits:.0f}** to run.\n\n"
+                    f"[Top up your OpenRouter credits](https://openrouter.ai/settings/credits)"
+                )
+        return False, (
+            f"⚠️ **Insufficient Credits**\n\n"
+            f"You need at least **${min_credits:.0f}** to run.\n\n"
+            f"[Top up your OpenRouter credits](https://openrouter.ai/settings/credits)"
+        )
 
     def register_user(self, telegram_user_id: int) -> tuple[bool, str]:
         """Register a new user."""
@@ -157,6 +167,38 @@ class UserService:
         positions_success, positions_response = alpaca_api.get_all_positions()
         key_details_success, key_details_response = openrouter_api.get_key_details()
 
+        # Get notes count, watchlists, and upcoming tasks
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Count notes
+            cursor.execute("SELECT COUNT(*) FROM notes WHERE telegram_user_id = ?", (telegram_user_id,))
+            notes_count = cursor.fetchone()[0]
+            
+            # Get watchlists
+            cursor.execute("SELECT watchlist_name, assets FROM watchlists WHERE telegram_user_id = ?", (telegram_user_id,))
+            watchlists = [dict(row) for row in cursor.fetchall()]
+            
+            # Get all upcoming tasks (one-time and recurring)
+            cursor.execute(
+                """SELECT description, task_datetime, ticker_symbol, trigger_type 
+                   FROM tasks 
+                   WHERE telegram_user_id = ? AND is_active = 1 AND task_datetime IS NOT NULL
+                   ORDER BY task_datetime""",
+                (telegram_user_id,)
+            )
+            upcoming_tasks = [dict(row) for row in cursor.fetchall()]
+            
+            # Get active alerts (conditional tasks)
+            cursor.execute(
+                """SELECT description, ticker_symbol, trigger_config 
+                   FROM tasks 
+                   WHERE telegram_user_id = ? AND is_active = 1 AND trigger_type = 'conditional'
+                   ORDER BY created_at""",
+                (telegram_user_id,)
+            )
+            active_alerts = [dict(row) for row in cursor.fetchall()]
+
         status_lines = []
         
         # Account Summary
@@ -229,6 +271,57 @@ class UserService:
                 f"• Total: `${data.get('usage', 0):.2f}`\n"
                 f"• Monthly: `${data.get('usage_monthly', 0):.2f}`"
             )
+        
+        # Notes
+        status_lines.append(f"\n*📝 Notes*")
+        status_lines.append(f"• Total: `{notes_count}`")
+        
+        # Watchlists
+        status_lines.append(f"\n*👀 Watchlists*")
+        if watchlists:
+            for wl in watchlists:
+                assets = json.loads(wl['assets']) if isinstance(wl['assets'], str) else wl['assets']
+                asset_count = len(assets)
+                status_lines.append(f"• *{wl['watchlist_name']}*: `{asset_count}` assets")
+        else:
+            status_lines.append("_No watchlists_")
+        
+        # Upcoming Tasks
+        status_lines.append(f"\n*⏰ Upcoming Tasks*")
+        if upcoming_tasks:
+            for task in upcoming_tasks:
+                ticker = f"*{task['ticker_symbol']}* " if task['ticker_symbol'] else ""
+                task_time = task['task_datetime'].split(' ')[0]  # Just show the date
+                desc = task['description'][:60] + "..." if len(task['description']) > 60 else task['description']
+                status_lines.append(f"• {ticker}`{task_time}`\n  _{desc}_")
+        else:
+            status_lines.append("_No upcoming tasks_")
+        
+        # Active Alerts
+        status_lines.append(f"\n*🚨 Active Alerts*")
+        if active_alerts:
+            for alert in active_alerts:
+                config = json.loads(alert['trigger_config'])
+                ticker = f"*{alert['ticker_symbol']}* " if alert['ticker_symbol'] else ""
+                
+                # Format condition nicely
+                condition_type = config['type'].replace('_', ' ').title()
+                comparison = config['comparison'].title()
+                threshold = config['threshold']
+                
+                # Format threshold based on type
+                if config['type'] in ['position_allocation']:
+                    threshold_str = f"{threshold * 100:.1f}%"
+                elif config['type'] in ['position_pnl']:
+                    threshold_str = f"{threshold * 100:.1f}%"
+                else:
+                    threshold_str = f"${threshold:,.2f}"
+                
+                condition_str = f"{condition_type} {comparison} {threshold_str}"
+                desc = alert['description'][:50] + "..." if len(alert['description']) > 50 else alert['description']
+                status_lines.append(f"• {ticker}`{condition_str}`\n  _{desc}_")
+        else:
+            status_lines.append("_No active alerts_")
         
         return "\n".join(status_lines)
     

@@ -160,11 +160,11 @@ async def _execute_task(task, send_message_callback, min_credits_to_run: float, 
     
     logger.info(f"Task triggered for user {telegram_user_id}: ID={task_id}, Type={trigger_type}, Ticker={ticker or 'None'}")
     
-    # No, this is a tuple, not a single string.
-    trigger_message = f"🔔 *{trigger_type.replace('_', ' ').title()} Task*"
+    # Build trigger message
+    trigger_message = f"🔔 **{trigger_type.replace('_', ' ').title()} Task**"
     if ticker:
         trigger_message += f" ({ticker})"
-    trigger_message += f"\n\n_Description:_\n{description}"
+    trigger_message += f"\n\n**Description:**\n{description}"
 
     # Check credits before running
     user_service = UserService()
@@ -172,7 +172,7 @@ async def _execute_task(task, send_message_callback, min_credits_to_run: float, 
     if not has_enough_credits:
         logger.warning(f"Task {task_id} for user {telegram_user_id} skipped: insufficient credits")
         queued_task_ids.discard(task_id)  # Allow re-queuing next cycle
-        await send_message_callback(trigger_message + "\n\n_Couldn't run:_\n" + message, telegram_user_id)
+        await send_message_callback(trigger_message + "\n\n**Couldn't run:**\n" + message, telegram_user_id)
         return
     
     await send_message_callback(trigger_message, task['telegram_user_id'])

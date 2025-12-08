@@ -14,7 +14,7 @@ from src.bot.commands import (
     delete_account_command,
 )
 from src.bot.handlers import handle_message, error_handler
-from src.utils.logger import setup_logger
+from src.utils import setup_logger, send_bot_markdown_message
 from dotenv import load_dotenv
 from agents import set_trace_processors
 from langsmith.wrappers import OpenAIAgentsTracingProcessor
@@ -40,8 +40,9 @@ async def post_init(application: Application):
     """Initialize background tasks after bot starts."""
     
     async def send_notification(message: str, user_id: int):
+        """Send notification with proper markdown formatting."""
         try:
-            await application.bot.send_message(chat_id=user_id, text=message, parse_mode='Markdown')
+            await send_bot_markdown_message(application.bot, user_id, message)
         except Exception as e:
             logger.error(f"Error sending notification to user {user_id}: {e}")
     

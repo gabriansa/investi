@@ -27,7 +27,11 @@ async def check_credits(send_message_callback, config: dict):
                     if remaining < min_credits_warning:
                         logger.warning(f"Low credits detected for user {user['telegram_user_id']}: ${remaining:.2f}")
                         await send_message_callback(
-                            message=f"⚠️ *Low Credits* - *${remaining:.2f}* remaining\n→ [Top up OpenRouter](https://openrouter.ai/settings/credits)",
+                            message=(
+                                f"⚠️ **Low Credits**\n\n"
+                                f"You have **${remaining:.2f}** remaining.\n\n"
+                                f"[Top up your OpenRouter credits](https://openrouter.ai/settings/credits)"
+                            ),
                             user_id=user['telegram_user_id']
                         )
                         break

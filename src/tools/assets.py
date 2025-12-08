@@ -71,76 +71,52 @@ def get_current_market_quote(
 @function_tool
 def find_screeners(
     ctx: RunContextWrapper[Context],
-    search_query: str | None = None,
-    group_name: Literal["Sectors & Industries", "ETFs & Mutual Funds", "Cryptocurrency", "Market Movers (Stock Price)", "Valuation & Strategy", "Sentiment & Interest", "Institutional & Guru Holdings", "Options"] | None = None,
-    subgroup_name: Literal["Basic Materials", "Consumer Discretionary (Cyclical)", "Consumer Staples", "Energy", "Financials", "Healthcare", "Industrials", "Information Technology", "Materials", "Utilities"] | None = None,
+    search_query: str,
     ):
     """
-    Finds available screeners using either natural language search OR browsing by category.
+    Finds available screeners using natural language search.
     Returns a list of screener names and descriptions that can then be used with execute_screener.
     
-    If search_query is provided, it takes priority and overrides group_name/subgroup_name.
-
     Args:
-        search_query (optional): Natural language search (e.g., "tech gainers", "German stocks winning today", "crypto stats"). Takes priority if provided.
-        group_name (optional): Browse by category (e.g., "Market Movers (Stock Price)", "Cryptocurrency").
-        subgroup_name (optional): Sector subgroup, only applicable when group_name is "Sectors & Industries".
+        search_query (required): Natural language search (e.g., "tech gainers", "German stocks winning today", "crypto stats").
     """
-    # Validate that at least one search method is provided
-    if not search_query and not group_name:
-        return {"error": "Must provide either search_query or group_name"}
-    
     # Get available screeners (needed for both methods)
     success, available_screeners = ctx.context.yfinance_api.available_screeners()
     if not success:
         return {"error": available_screeners}
     
-    # Method 1: Search by natural language query
-    if search_query:
-        class ScreenerMatch(BaseModel):
-            key: str
-            relevance_score: float  # 0.0 to 1.0
+    class ScreenerMatch(BaseModel):
+        key: str
+        relevance_score: float  # 0.0 to 1.0
 
-        class ScreenerResponse(BaseModel):
-            matches: list[ScreenerMatch]
+    class ScreenerResponse(BaseModel):
+        matches: list[ScreenerMatch]
 
-        available_screeners_str = "\n".join([f"{screener['name']}: {screener['description']}" for screener in available_screeners])
+    available_screeners_str = "\n".join([f"{screener['name']}: {screener['description']}" for screener in available_screeners])
 
-        system_prompt = load_prompt("find_screeners.md").format(available_screeners=available_screeners_str)
+    system_prompt = load_prompt("find_screeners.md").format(available_screeners=available_screeners_str)
 
-        try:
-            completion = ctx.context.client.chat.completions.parse(
-                model=ctx.context.screener_finder_model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": search_query}
-                ],
-                response_format=ScreenerResponse
-            )   
-            matches = completion.choices[0].message.parsed.matches
-            screener_map = {s["name"]: s for s in available_screeners}
-            relevant_screeners = [
-                {**screener_map[match.key], "relevance_score": match.relevance_score} 
-                for match in matches 
-                if match.key in screener_map
-            ]
-            return relevant_screeners
-        except Exception as e:
-            return {"error": f"Failed to search for screeners: {str(e)}"}
+    try:
+        completion = ctx.context.client.chat.completions.parse(
+            model=ctx.context.screener_finder_model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": search_query}
+            ],
+            response_format=ScreenerResponse
+        )   
+        matches = completion.choices[0].message.parsed.matches
+        screener_map = {s["name"]: s for s in available_screeners}
+        relevant_screeners = [
+            {**screener_map[match.key], "relevance_score": match.relevance_score} 
+            for match in matches 
+            if match.key in screener_map
+        ]
+        return relevant_screeners
+    except Exception as e:
+        return {"error": f"Failed to search for screeners: {str(e)}"}
     
-    # Method 2: Browse by group/category
-    else:  # group_name is provided
-        success, relevant_screener_keys = ctx.context.yfinance_api.get_screeners_by_group(group_name=group_name, subgroup_name=subgroup_name)
-        
-        if success:
-            screener_map = {s["name"]: s for s in available_screeners}
-            relevant_screeners = [
-                screener_map[key] for key in relevant_screener_keys 
-                if key in screener_map
-            ]
-            return relevant_screeners
-        else:
-            return {"error": relevant_screener_keys}
+
 
 @function_tool
 def execute_screener(

@@ -55,7 +55,7 @@ def init_database():
                 related_note_ids TEXT,
                 related_task_ids TEXT,
                 related_watchlist_ids TEXT,
-                FOREIGN KEY (telegram_user_id) REFERENCES users (telegram_user_id)
+                FOREIGN KEY (telegram_user_id) REFERENCES users (telegram_user_id) ON DELETE CASCADE
             )
         """)
         
@@ -83,7 +83,7 @@ def init_database():
                 related_note_ids TEXT,
                 related_task_ids TEXT,
                 related_watchlist_ids TEXT,
-                FOREIGN KEY (telegram_user_id) REFERENCES users (telegram_user_id)
+                FOREIGN KEY (telegram_user_id) REFERENCES users (telegram_user_id) ON DELETE CASCADE
             )
         """)
         
@@ -117,7 +117,7 @@ def init_database():
                 watchlist_name TEXT NOT NULL,
                 assets TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
-                FOREIGN KEY (telegram_user_id) REFERENCES users (telegram_user_id)
+                FOREIGN KEY (telegram_user_id) REFERENCES users (telegram_user_id) ON DELETE CASCADE
             )
         """)
         
@@ -137,7 +137,7 @@ def init_database():
             CREATE TABLE IF NOT EXISTS note_embeddings (
                 note_id TEXT PRIMARY KEY,
                 embedding BLOB NOT NULL,
-                FOREIGN KEY (note_id) REFERENCES notes (note_id)
+                FOREIGN KEY (note_id) REFERENCES notes (note_id) ON DELETE CASCADE
             )
         """)
         

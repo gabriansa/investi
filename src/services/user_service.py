@@ -244,22 +244,7 @@ class UserService:
         try:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
-                # Delete all notes for this user
-                cursor.execute(
-                    "DELETE FROM notes WHERE telegram_user_id = ?",
-                    (telegram_user_id,)
-                )
-                # Delete all tasks for this user
-                cursor.execute(
-                    "DELETE FROM tasks WHERE telegram_user_id = ?",
-                    (telegram_user_id,)
-                )
-                # Delete all watchlists for this user
-                cursor.execute(
-                    "DELETE FROM watchlists WHERE telegram_user_id = ?",
-                    (telegram_user_id,)
-                )
-                # Delete the user
+                # Delete the user - CASCADE constraints will handle all related data
                 cursor.execute(
                     "DELETE FROM users WHERE telegram_user_id = ?",
                     (telegram_user_id,)

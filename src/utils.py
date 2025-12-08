@@ -48,3 +48,39 @@ def validate_date(
         return True, dt.strftime()
     except:
         return False, None
+
+
+def validate_date_range(
+    start_date: str,
+    end_date: str,
+    input_format="%Y-%m-%d"
+) -> tuple[bool, str | None]:
+    """
+    Validates that end_date is after start_date and they are not equal.
+    
+    Args:
+        start_date: Start date string to validate (required)
+        end_date: End date string to validate (required)
+        input_format: Format to parse dates from. Defaults to "%Y-%m-%d".
+        
+    Returns:
+        Tuple of (is_valid, error_message)
+        - (True, None) if dates are valid
+        - (False, error_message) if validation fails
+    """
+    try:
+        # Parse both dates
+        start_dt = datetime.strptime(start_date, input_format)
+        end_dt = datetime.strptime(end_date, input_format)
+        
+        # Check if dates are equal
+        if start_dt == end_dt:
+            return False, f"end_date cannot be equal to start_date. Both are set to {start_date}"
+        
+        # Check if end_date is before start_date
+        if end_dt < start_dt:
+            return False, f"end_date ({end_date}) must be after start_date ({start_date})"
+        
+        return True, None
+    except Exception as e:
+        return False, f"Error validating date range: {str(e)}"

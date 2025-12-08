@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from datetime import datetime, timezone
 from src.api.alpaca import AlpacaAPI
+from src.api.yahoo_finance import YFinanceAPI
 from src.services.database import get_db_connection
 from src.services.user_service import UserService
 from src.utils import validate_date
@@ -13,7 +14,18 @@ from src.utils import validate_date
 
 def get_today_utc():
     """Get current UTC datetime as formatted string."""
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S %Z")
+    return datetime.now(timezone.utc).strftime("%A %Y-%m-%d %H:%M:%S %Z")
+
+def get_market_status():
+    """
+    Fetch and format market status data.
+    """
+    yfinance_api = YFinanceAPI()
+    success, data = yfinance_api.market_status()
+    if success:
+        return data['message']
+    else:
+        return data
 
 
 def get_account_data(user_id: int):
@@ -244,6 +256,7 @@ def build_prompt(role: str, user_id: int) -> str:
     
     # Gather dynamic data
     today = get_today_utc()
+    market_status = get_market_status()
     equity, cash, buying_power, pdt_status, daytrade_count, maintenance_margin, long_market_value, short_market_value, positions, orders = get_account_data(user_id)
     tasks = get_upcoming_tasks(user_id)
     watchlists = get_watchlist_data(user_id)
@@ -251,6 +264,7 @@ def build_prompt(role: str, user_id: int) -> str:
     # Format the template with dynamic data
     formatted_prompt = template.format(
         today=today,
+        market_status=market_status,
         equity=equity,
         cash=cash,
         buying_power=buying_power,

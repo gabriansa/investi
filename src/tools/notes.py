@@ -8,7 +8,7 @@ from agents import RunContextWrapper, function_tool
 from src.agent.context import Context
 from src.services.database import get_db_connection
 from src.tools.types import TOPICS, TopicLiteral, RoleLiteral
-from src.utils import validate_date
+from src.utils import validate_date, validate_date_range
 
 
 def cosine_similarity(vec1: list[float], vec2: list[float]) -> float:
@@ -107,14 +107,31 @@ def search_notes(
         search_query (optional): Semantic search query to find relevant notes by meaning. Can be combined with other filters.
         ticker_symbols (optional): List of stock/crypto symbols to filter by (e.g., ["AAPL", "MSFT", "BTC/USD"]).
         topics (optional): List of topic categories to filter by (e.g., ["RISK_FACTORS", "ALLOCATION"]).
-        start_date (optional): Filter notes on or after this date in YYYY-MM-DD format.
-        end_date (optional): Filter notes on or before this date in YYYY-MM-DD format.
+        start_date (optional): Filter notes on or after this date in YYYY-MM-DD format. If provided, must be before end_date.
+        end_date (optional): Filter notes on or before this date in YYYY-MM-DD format. If provided, must be after start_date. If None, shows all notes until today.
         limit (optional): Maximum number of results to return (default: 10).
         order_by (optional): How to order results - "relevant" (balances relevance + recency) or "recent" (prioritizes date, default).
     """
     # At least one filter must be provided
     if not search_query and not ticker_symbols and not topics and not start_date and not end_date:
         return {"error": "At least one filter (search_query, ticker_symbols, topics, start_date, or end_date) must be provided."}
+    
+    # Validate individual dates
+    if start_date:
+        success, start_dt = validate_date(start_date, output_format="%Y-%m-%d %H:%M:%S %Z")
+        if not success:
+            return {"error": f"Invalid start_date format. Use YYYY-MM-DD format (e.g., '2024-01-01'). Provided: {start_date}"}
+    
+    if end_date:
+        success, end_dt = validate_date(end_date, output_format="%Y-%m-%d %H:%M:%S %Z")
+        if not success:
+            return {"error": f"Invalid end_date format. Use YYYY-MM-DD format (e.g., '2024-12-31'). Provided: {end_date}"}
+    
+    # Validate date range if both dates are provided
+    if start_date and end_date:
+        is_valid, error_msg = validate_date_range(start_date, end_date)
+        if not is_valid:
+            return {"error": error_msg}
     
     # Build common filter conditions
     filter_conditions = []
@@ -131,16 +148,10 @@ def search_notes(
         filter_params.extend([t.upper() for t in topics])
     
     if start_date:
-        success, start_dt = validate_date(start_date, output_format="%Y-%m-%d %H:%M:%S %Z")
-        if not success:
-            return {"error": f"Invalid start_date format. Use YYYY-MM-DD format (e.g., '2024-01-01'). Provided: {start_date}"}
         filter_conditions.append("created_at >= ?")
         filter_params.append(start_dt)
     
     if end_date:
-        success, end_dt = validate_date(end_date, output_format="%Y-%m-%d %H:%M:%S %Z")
-        if not success:
-            return {"error": f"Invalid end_date format. Use YYYY-MM-DD format (e.g., '2024-12-31'). Provided: {end_date}"}
         filter_conditions.append("created_at < ?")
         filter_params.append(end_dt)
     

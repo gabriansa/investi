@@ -1,8 +1,8 @@
 from datetime import datetime, timezone
 import yfinance as yf
 from yfinance.screener import screen
-from .screeners import AVAILABLE_SCREENERS, SCREENER_GROUPS
-from src.utils import validate_date
+from .screeners import AVAILABLE_SCREENERS
+from src.utils import validate_date, validate_date_range
 import talib
 import numpy as np
 
@@ -10,6 +10,19 @@ import numpy as np
 class YFinanceAPI:
     def __init__(self):
         pass
+
+    def market_status(
+        self,
+        market: str = "US",
+        ):
+        """
+        The market status endpoint provides the status of the market.
+        """
+        try:
+            market = yf.Market(market=market)
+            return True, {"message": market.status['message'], "status": market.status['status']}
+        except:
+            return False, "Unable to fetch market status"
 
     def time_series(
         self,
@@ -40,6 +53,12 @@ class YFinanceAPI:
                 is_valid, _ = validate_date(end_date)
                 if not is_valid:
                     return False, f"Invalid end date format. Use YYYY-MM-DD format (e.g., '2024-12-31'). Provided: {end_date}"
+            
+            # Validate date range if both dates are provided
+            if start_date and end_date:
+                is_valid, error_msg = validate_date_range(start_date, end_date)
+                if not is_valid:
+                    return False, error_msg
 
             if outputsize > 5000 or outputsize < 1:
                 return False, f"outputsize must be between 1 and 5000, got {outputsize}"
@@ -252,34 +271,6 @@ class YFinanceAPI:
         """
         try:    
             return True, AVAILABLE_SCREENERS
-        except Exception as e:
-            return False, str(e)
-
-    def get_screeners_by_group(
-        self,
-        group_name: str,
-        subgroup_name: str = None,
-        ):
-        """
-        The get screeners by group endpoint provides a list of screeners by group name.
-        """
-        try:
-            if group_name not in SCREENER_GROUPS:
-                return False, f"Group '{group_name}' does not exist. Available groups: {list(SCREENER_GROUPS.keys())}"
-            
-            group_data = SCREENER_GROUPS[group_name]
-            
-            if subgroup_name:
-                # Check if the group has subgroups (is a dict) or is a direct list
-                if isinstance(group_data, list):
-                    return False, f"Group '{group_name}' does not have subgroups. It contains a direct list of screeners."
-                
-                if subgroup_name not in group_data:
-                    return False, f"Subgroup '{subgroup_name}' not found in group '{group_name}'. Available subgroups: {list(group_data.keys())}"
-                
-                return True, group_data[subgroup_name]
-            else:
-                return True, group_data
         except Exception as e:
             return False, str(e)
 

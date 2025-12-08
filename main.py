@@ -11,6 +11,9 @@ from src.bot.commands import (
     set_alpaca_command, 
     set_openrouter_command,
     status_command,
+    tasks_command,
+    alerts_command,
+    watchlists_command,
     delete_account_command,
 )
 from src.bot.handlers import handle_message, error_handler
@@ -73,6 +76,9 @@ if __name__ == "__main__":
 
     app.add_handler(CommandHandler("start", lambda update, context: start_command(update)))
     app.add_handler(CommandHandler("status", lambda update, context: status_command(update)))
+    app.add_handler(CommandHandler("tasks", lambda update, context: tasks_command(update)))
+    app.add_handler(CommandHandler("alerts", lambda update, context: alerts_command(update)))
+    app.add_handler(CommandHandler("watchlists", lambda update, context: watchlists_command(update)))
     app.add_handler(CommandHandler("set_alpaca", lambda update, context: set_alpaca_command(update, context)))
     app.add_handler(CommandHandler("set_openrouter", lambda update, context: set_openrouter_command(update, context)))
     app.add_handler(CommandHandler("delete_account", lambda update, context: delete_account_command(update)))

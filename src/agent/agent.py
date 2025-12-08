@@ -20,7 +20,7 @@ from src.tools.tasks import set_one_time_task, set_recurring_task, set_condition
 from src.tools.searches import search_web, search_sec_filings
 from src.tools.watchlists import get_watchlist, create_watchlist, remove_watchlist, modify_watchlist_symbols
 from src.tools.write_todos import write_todos
-
+from src.tools.sleep import sleep
 
 load_dotenv()
 
@@ -123,6 +123,7 @@ class InvestiAgent:
                 get_current_market_quote,
                 set_one_time_task, set_recurring_task, set_conditional_task, get_tasks, remove_task,
                 write_todos,
+                sleep,
             ],
             model=OpenAIChatCompletionsModel(model=self.trader_model, openai_client=self.cached_client)
         )

@@ -98,6 +98,36 @@ async def status_command(update: Update):
     response = user_service.get_status(telegram_user_id)
     await update.message.reply_text(response, parse_mode='Markdown')
 
+async def tasks_command(update: Update):
+    """Handle /tasks command."""
+    user_service = UserService()
+    telegram_user_id = update.effective_user.id
+    
+    logger.info(f"User {telegram_user_id} executed /tasks command")
+
+    response = user_service.get_tasks(telegram_user_id)
+    await update.message.reply_text(response, parse_mode='Markdown')
+
+async def alerts_command(update: Update):
+    """Handle /alerts command."""
+    user_service = UserService()
+    telegram_user_id = update.effective_user.id
+    
+    logger.info(f"User {telegram_user_id} executed /alerts command")
+
+    response = user_service.get_alerts(telegram_user_id)
+    await update.message.reply_text(response, parse_mode='Markdown')
+
+async def watchlists_command(update: Update):
+    """Handle /watchlists command."""
+    user_service = UserService()
+    telegram_user_id = update.effective_user.id
+    
+    logger.info(f"User {telegram_user_id} executed /watchlists command")
+
+    response = user_service.get_watchlists(telegram_user_id)
+    await update.message.reply_text(response, parse_mode='Markdown')
+
 async def delete_account_command(update: Update):
     """Handle /delete_account command."""
     user_service = UserService()

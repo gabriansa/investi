@@ -167,37 +167,11 @@ class UserService:
         positions_success, positions_response = alpaca_api.get_all_positions()
         key_details_success, key_details_response = openrouter_api.get_key_details()
 
-        # Get notes count, watchlists, and upcoming tasks
+        # Get notes count
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            
-            # Count notes
             cursor.execute("SELECT COUNT(*) FROM notes WHERE telegram_user_id = ?", (telegram_user_id,))
             notes_count = cursor.fetchone()[0]
-            
-            # Get watchlists
-            cursor.execute("SELECT watchlist_name, assets FROM watchlists WHERE telegram_user_id = ?", (telegram_user_id,))
-            watchlists = [dict(row) for row in cursor.fetchall()]
-            
-            # Get all upcoming tasks (one-time and recurring)
-            cursor.execute(
-                """SELECT description, task_datetime, ticker_symbol, trigger_type 
-                   FROM tasks 
-                   WHERE telegram_user_id = ? AND is_active = 1 AND task_datetime IS NOT NULL
-                   ORDER BY task_datetime""",
-                (telegram_user_id,)
-            )
-            upcoming_tasks = [dict(row) for row in cursor.fetchall()]
-            
-            # Get active alerts (conditional tasks)
-            cursor.execute(
-                """SELECT description, ticker_symbol, trigger_config 
-                   FROM tasks 
-                   WHERE telegram_user_id = ? AND is_active = 1 AND trigger_type = 'conditional'
-                   ORDER BY created_at""",
-                (telegram_user_id,)
-            )
-            active_alerts = [dict(row) for row in cursor.fetchall()]
 
         status_lines = []
         
@@ -276,29 +250,55 @@ class UserService:
         status_lines.append(f"\n*📝 Notes*")
         status_lines.append(f"• Total: `{notes_count}`")
         
-        # Watchlists
-        status_lines.append(f"\n*👀 Watchlists*")
-        if watchlists:
-            for wl in watchlists:
-                assets = json.loads(wl['assets']) if isinstance(wl['assets'], str) else wl['assets']
-                asset_count = len(assets)
-                status_lines.append(f"• *{wl['watchlist_name']}*: `{asset_count}` assets")
-        else:
-            status_lines.append("_No watchlists_")
+        return "\n".join(status_lines)
+    
+    def get_tasks(self, telegram_user_id: int) -> str:
+        """Get all upcoming tasks for the user."""
+        user, message = self.get_user(telegram_user_id)
+        if user is None:
+            return message
         
-        # Upcoming Tasks
-        status_lines.append(f"\n*⏰ Upcoming Tasks*")
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """SELECT description, task_datetime, ticker_symbol, trigger_type 
+                   FROM tasks 
+                   WHERE telegram_user_id = ? AND is_active = 1 AND task_datetime IS NOT NULL
+                   ORDER BY task_datetime""",
+                (telegram_user_id,)
+            )
+            upcoming_tasks = [dict(row) for row in cursor.fetchall()]
+        
+        lines = ["*⏰ Upcoming Tasks*\n"]
         if upcoming_tasks:
             for task in upcoming_tasks:
                 ticker = f"*{task['ticker_symbol']}* " if task['ticker_symbol'] else ""
                 task_time = task['task_datetime'].split(' ')[0]  # Just show the date
                 desc = task['description'][:60] + "..." if len(task['description']) > 60 else task['description']
-                status_lines.append(f"• {ticker}`{task_time}`\n  _{desc}_")
+                lines.append(f"• {ticker}`{task_time}`\n  _{desc}_")
         else:
-            status_lines.append("_No upcoming tasks_")
+            lines.append("_No upcoming tasks_")
         
-        # Active Alerts
-        status_lines.append(f"\n*🚨 Active Alerts*")
+        return "\n".join(lines)
+    
+    def get_alerts(self, telegram_user_id: int) -> str:
+        """Get all active alerts for the user."""
+        user, message = self.get_user(telegram_user_id)
+        if user is None:
+            return message
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """SELECT description, ticker_symbol, trigger_config 
+                   FROM tasks 
+                   WHERE telegram_user_id = ? AND is_active = 1 AND trigger_type = 'conditional'
+                   ORDER BY created_at""",
+                (telegram_user_id,)
+            )
+            active_alerts = [dict(row) for row in cursor.fetchall()]
+        
+        lines = ["*🚨 Active Alerts*\n"]
         if active_alerts:
             for alert in active_alerts:
                 config = json.loads(alert['trigger_config'])
@@ -319,11 +319,33 @@ class UserService:
                 
                 condition_str = f"{condition_type} {comparison} {threshold_str}"
                 desc = alert['description'][:50] + "..." if len(alert['description']) > 50 else alert['description']
-                status_lines.append(f"• {ticker}`{condition_str}`\n  _{desc}_")
+                lines.append(f"• {ticker}`{condition_str}`\n  _{desc}_")
         else:
-            status_lines.append("_No active alerts_")
+            lines.append("_No active alerts_")
         
-        return "\n".join(status_lines)
+        return "\n".join(lines)
+    
+    def get_watchlists(self, telegram_user_id: int) -> str:
+        """Get all watchlists for the user."""
+        user, message = self.get_user(telegram_user_id)
+        if user is None:
+            return message
+        
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT watchlist_name, assets FROM watchlists WHERE telegram_user_id = ?", (telegram_user_id,))
+            watchlists = [dict(row) for row in cursor.fetchall()]
+        
+        lines = ["*👀 Watchlists*\n"]
+        if watchlists:
+            for wl in watchlists:
+                assets = json.loads(wl['assets']) if isinstance(wl['assets'], str) else wl['assets']
+                asset_count = len(assets)
+                lines.append(f"• *{wl['watchlist_name']}*: `{asset_count}` assets")
+        else:
+            lines.append("_No watchlists_")
+        
+        return "\n".join(lines)
     
     def delete_account(self, telegram_user_id: int) -> tuple[bool, str]:
         """

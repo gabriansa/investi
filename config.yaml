@@ -27,4 +27,4 @@ credits:
   credit_check_interval_hours: 6
 
 tasks:
-  task_check_interval_seconds: 60
+  task_check_interval_seconds: 30

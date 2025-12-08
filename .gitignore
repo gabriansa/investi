@@ -48,6 +48,9 @@ Thumbs.db
 *.log
 logs/
 
+# Production data snapshots
+prod-data/
+
 # Testing
 .pytest_cache/
 .coverage

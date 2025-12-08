@@ -244,7 +244,41 @@ class UserService:
         try:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
-                # Delete the user - CASCADE constraints will handle all related data
+                
+                # First, get all note_ids for this user to delete embeddings
+                cursor.execute(
+                    "SELECT note_id FROM notes WHERE telegram_user_id = ?",
+                    (telegram_user_id,)
+                )
+                note_ids = [row[0] for row in cursor.fetchall()]
+                
+                # Delete note embeddings
+                if note_ids:
+                    placeholders = ','.join('?' * len(note_ids))
+                    cursor.execute(
+                        f"DELETE FROM note_embeddings WHERE note_id IN ({placeholders})",
+                        note_ids
+                    )
+                
+                # Delete tasks
+                cursor.execute(
+                    "DELETE FROM tasks WHERE telegram_user_id = ?",
+                    (telegram_user_id,)
+                )
+                
+                # Delete notes
+                cursor.execute(
+                    "DELETE FROM notes WHERE telegram_user_id = ?",
+                    (telegram_user_id,)
+                )
+                
+                # Delete watchlists
+                cursor.execute(
+                    "DELETE FROM watchlists WHERE telegram_user_id = ?",
+                    (telegram_user_id,)
+                )
+                
+                # Finally, delete the user
                 cursor.execute(
                     "DELETE FROM users WHERE telegram_user_id = ?",
                     (telegram_user_id,)

@@ -44,7 +44,12 @@ async def _process_message(update: Update, config: dict):
     )
     result = await agent.run(text)
 
-    await update.message.reply_text(result, parse_mode='Markdown')
+    # Try to send with Markdown, fall back to plain text if parsing fails
+    try:
+        await update.message.reply_text(result, parse_mode='Markdown')
+    except:
+        # If Markdown parsing fails, send as plain text
+        await update.message.reply_text(result)
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle errors."""

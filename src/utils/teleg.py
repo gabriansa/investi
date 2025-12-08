@@ -1,8 +1,24 @@
 import asyncio
 import logging
 import telegramify_markdown
+from telegram.error import TimedOut
 
 logger = logging.getLogger(__name__)
+
+
+async def send_message_with_retry(bot, chat_id: int, text: str, parse_mode: str = 'Markdown', max_retries: int = 2):
+    """Send message with automatic retry on timeout. Combined with 10s global timeouts."""
+    for attempt in range(max_retries):
+        try:
+            await bot.send_message(chat_id=chat_id, text=text, parse_mode=parse_mode)
+            return
+        except TimedOut:
+            if attempt < max_retries - 1:
+                logger.warning(f"Timeout on attempt {attempt + 1}/{max_retries}, retrying...")
+                await asyncio.sleep(1)
+            else:
+                logger.error(f"Failed to send message after {max_retries} attempts")
+                raise
 
 
 def chunk_text(text: str, max_length: int = 4096) -> list:
@@ -23,8 +39,8 @@ def chunk_text(text: str, max_length: int = 4096) -> list:
     return chunks
 
 
-async def send_bot_markdown_message(bot, chat_id: int, message: str, max_length: int = 4096):
-    """Send markdown message using bot instance (for background tasks)."""
+async def send_markdown_message(bot, chat_id: int, message: str, max_length: int = 4096):
+    """Send markdown message with chunking, retry logic, and fallbacks."""
     try:
         # Convert markdown to Telegram-friendly format
         converted = telegramify_markdown.markdownify(message)
@@ -33,13 +49,13 @@ async def send_bot_markdown_message(bot, chat_id: int, message: str, max_length:
         # Send all chunks with MarkdownV2
         for i, chunk in enumerate(chunks, 1):
             try:
-                await bot.send_message(chat_id=chat_id, text=chunk, parse_mode='MarkdownV2')
+                await send_message_with_retry(bot, chat_id, chunk, parse_mode='MarkdownV2')
                 if i < len(chunks):
                     await asyncio.sleep(0.3)
             except Exception as e:
                 # If MarkdownV2 fails, log error and send as plain text
                 logger.warning(f"Failed to send chunk {i}/{len(chunks)} with MarkdownV2: {e}")
-                await bot.send_message(chat_id=chat_id, text=chunk)
+                await send_message_with_retry(bot, chat_id, chunk, parse_mode=None)
                 if i < len(chunks):
                     await asyncio.sleep(0.3)
     except Exception as e:
@@ -47,6 +63,6 @@ async def send_bot_markdown_message(bot, chat_id: int, message: str, max_length:
         logger.error(f"Failed to convert markdown: {e}")
         chunks = chunk_text(message, max_length)
         for i, chunk in enumerate(chunks, 1):
-            await bot.send_message(chat_id=chat_id, text=chunk)
+            await send_message_with_retry(bot, chat_id, chunk, parse_mode=None)
             if i < len(chunks):
                 await asyncio.sleep(0.3)

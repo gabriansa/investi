@@ -1,4 +1,5 @@
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from telegram.request import HTTPXRequest
 import asyncio
 import os
 import yaml
@@ -17,7 +18,7 @@ from src.bot.commands import (
     delete_account_command,
 )
 from src.bot.handlers import handle_message, error_handler
-from src.utils import setup_logger, send_bot_markdown_message
+from src.utils import setup_logger, send_markdown_message
 from dotenv import load_dotenv
 from agents import set_trace_processors
 from langsmith.wrappers import OpenAIAgentsTracingProcessor
@@ -45,7 +46,7 @@ async def post_init(application: Application):
     async def send_notification(message: str, user_id: int):
         """Send notification with proper markdown formatting."""
         try:
-            await send_bot_markdown_message(application.bot, user_id, message)
+            await send_markdown_message(application.bot, user_id, message)
         except Exception as e:
             logger.error(f"Error sending notification to user {user_id}: {e}")
     
@@ -71,8 +72,16 @@ if __name__ == "__main__":
     init_database()
     logger.info("Database initialized")
     
+    # Configure request with longer timeouts for better reliability
+    request = HTTPXRequest(
+        connection_pool_size=8,
+        connect_timeout=10.0,
+        read_timeout=10.0,
+        write_timeout=10.0,
+    )
+    
     # Build application
-    app = Application.builder().token(token).build()
+    app = Application.builder().token(token).request(request).build()
 
     app.add_handler(CommandHandler("start", lambda update, context: start_command(update)))
     app.add_handler(CommandHandler("status", lambda update, context: status_command(update)))
@@ -82,7 +91,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("set_alpaca", lambda update, context: set_alpaca_command(update, context)))
     app.add_handler(CommandHandler("set_openrouter", lambda update, context: set_openrouter_command(update, context)))
     app.add_handler(CommandHandler("delete_account", lambda update, context: delete_account_command(update)))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, lambda update, context: handle_message(update, config)))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, lambda update, context: handle_message(update, context, config)))
     app.add_error_handler(error_handler)
     
     # Initialize background tasks after bot starts

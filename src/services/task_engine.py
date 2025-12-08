@@ -114,7 +114,7 @@ def _get_condition_value(condition_type: str, ticker: str, telegram_user_id: int
         )
 
         if condition_type == 'price':
-            success, data = YFinanceAPI.quote(ticker)
+            success, data = YFinanceAPI().quote(symbol=ticker, interval="1m")
             if success:
                 return float(data.get('close', 0))
         

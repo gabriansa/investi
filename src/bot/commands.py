@@ -2,6 +2,7 @@ import logging
 from telegram import Update
 from telegram.ext import ContextTypes
 from src.services import UserService
+from src.utils import send_markdown_message
 
 logger = logging.getLogger(__name__)
 
@@ -16,14 +17,16 @@ async def start_command(update: Update):
 
     _, message = user_service.register_user(telegram_user_id)
 
-    await update.message.reply_text(message, parse_mode='Markdown')
+    await send_markdown_message(update.get_bot(), update.effective_chat.id, message)
     
 async def set_alpaca_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /set_alpaca command."""
     telegram_user_id = update.effective_user.id
+    bot = update.get_bot()
+    chat_id = update.effective_chat.id
     
     if not context.args or len(context.args) != 2:
-        await update.message.reply_text("Usage: `/set_alpaca <api_key> <secret_key>`", parse_mode='Markdown')
+        await send_markdown_message(bot, chat_id, "Usage: `/set_alpaca <api_key> <secret_key>`")
         return
 
     # Delete the message containing secrets
@@ -39,26 +42,28 @@ async def set_alpaca_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     exists, message = user_service.user_exists(telegram_user_id)
 
     if not exists:
-        await update.message.reply_text(message, parse_mode='Markdown')
+        await send_markdown_message(bot, chat_id, message)
         return
 
     is_valid, message = user_service.validate_alpaca_credentials(context.args[0], context.args[1])
     
     if not is_valid:
         logger.warning(f"User {telegram_user_id} provided invalid Alpaca credentials")
-        await update.message.reply_text(message, parse_mode='Markdown')
+        await send_markdown_message(bot, chat_id, message)
         return
 
     _, message = user_service.set_alpaca_credentials(telegram_user_id, context.args[0], context.args[1])
     logger.info(f"User {telegram_user_id} successfully set Alpaca credentials")
-    await update.message.reply_text(message, parse_mode='Markdown')
+    await send_markdown_message(bot, chat_id, message)
 
 async def set_openrouter_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /set_openrouter command."""
     telegram_user_id = update.effective_user.id
+    bot = update.get_bot()
+    chat_id = update.effective_chat.id
     
     if not context.args or len(context.args) != 1:
-        await update.message.reply_text("Usage: `/set_openrouter <api_key>`", parse_mode='Markdown')
+        await send_markdown_message(bot, chat_id, "Usage: `/set_openrouter <api_key>`")
         return
     
     # Delete the message containing secrets
@@ -74,64 +79,74 @@ async def set_openrouter_command(update: Update, context: ContextTypes.DEFAULT_T
     exists, message = user_service.user_exists(telegram_user_id)
 
     if not exists:
-        await update.message.reply_text(message, parse_mode='Markdown')
+        await send_markdown_message(bot, chat_id, message)
         return
 
     is_valid, message = user_service.validate_openrouter_credentials(context.args[0])
     
     if not is_valid:
         logger.warning(f"User {telegram_user_id} provided invalid OpenRouter credentials")
-        await update.message.reply_text(message, parse_mode='Markdown')
+        await send_markdown_message(bot, chat_id, message)
         return
 
     _, message = user_service.set_openrouter_credentials(telegram_user_id, context.args[0])
     logger.info(f"User {telegram_user_id} successfully set OpenRouter credentials")
-    await update.message.reply_text(message, parse_mode='Markdown')
+    await send_markdown_message(bot, chat_id, message)
 
 async def status_command(update: Update):
     """Handle /status command."""
     user_service = UserService()
     telegram_user_id = update.effective_user.id
+    bot = update.get_bot()
+    chat_id = update.effective_chat.id
     
     logger.info(f"User {telegram_user_id} executed /status command")
 
     response = user_service.get_status(telegram_user_id)
-    await update.message.reply_text(response, parse_mode='Markdown')
+    await send_markdown_message(bot, chat_id, response)
 
 async def tasks_command(update: Update):
     """Handle /tasks command."""
     user_service = UserService()
     telegram_user_id = update.effective_user.id
+    bot = update.get_bot()
+    chat_id = update.effective_chat.id
     
     logger.info(f"User {telegram_user_id} executed /tasks command")
 
     response = user_service.get_tasks(telegram_user_id)
-    await update.message.reply_text(response, parse_mode='Markdown')
+    await send_markdown_message(bot, chat_id, response)
 
 async def alerts_command(update: Update):
     """Handle /alerts command."""
     user_service = UserService()
     telegram_user_id = update.effective_user.id
+    bot = update.get_bot()
+    chat_id = update.effective_chat.id
     
     logger.info(f"User {telegram_user_id} executed /alerts command")
 
     response = user_service.get_alerts(telegram_user_id)
-    await update.message.reply_text(response, parse_mode='Markdown')
+    await send_markdown_message(bot, chat_id, response)
 
 async def watchlists_command(update: Update):
     """Handle /watchlists command."""
     user_service = UserService()
     telegram_user_id = update.effective_user.id
+    bot = update.get_bot()
+    chat_id = update.effective_chat.id
     
     logger.info(f"User {telegram_user_id} executed /watchlists command")
 
     response = user_service.get_watchlists(telegram_user_id)
-    await update.message.reply_text(response, parse_mode='Markdown')
+    await send_markdown_message(bot, chat_id, response)
 
 async def delete_account_command(update: Update):
     """Handle /delete_account command."""
     user_service = UserService()
     telegram_user_id = update.effective_user.id
+    bot = update.get_bot()
+    chat_id = update.effective_chat.id
     
     logger.info(f"User {telegram_user_id} executed /delete_account command")
 
@@ -140,4 +155,4 @@ async def delete_account_command(update: Update):
     if success:
         logger.info(f"User {telegram_user_id} successfully deleted their account")
     
-    await update.message.reply_text(message, parse_mode='Markdown')
+    await send_markdown_message(bot, chat_id, message)

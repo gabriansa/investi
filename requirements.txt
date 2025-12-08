@@ -10,3 +10,4 @@ openai-agents
 langsmith
 tiktoken
 mplfinance
+telegramify_markdown

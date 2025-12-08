@@ -12,6 +12,7 @@ def get_db_connection():
     """Context manager for database connections."""
     conn = sqlite3.connect(DATABASE_PATH)
     conn.row_factory = sqlite3.Row  # Enable column access by name
+    conn.execute("PRAGMA foreign_keys = ON")  # Enable foreign key constraints
     try:
         yield conn
         conn.commit()

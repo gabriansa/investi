@@ -49,7 +49,7 @@ Thumbs.db
 logs/
 
 # Production data snapshots
-prod-data/
+logs-prod/
 
 # Testing
 .pytest_cache/

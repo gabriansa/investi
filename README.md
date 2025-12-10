@@ -74,22 +74,22 @@ To use Investi, you'll need to get API keys from a few services:
 
 ## Notes
 
-- The project uses PostgreSQL. PostgreSQL automatically starts on boot and runs in the background on Mac.
-- For production/Pi deployment, see [docs/POSTGRES_SETUP.md](docs/POSTGRES_SETUP.md).
+- The project uses local PostgreSQL. If you wish you can connect this to your favorite database provider.
 - Get your Telegram bot token by creating a bot with [@BotFather](https://t.me/botfather) on Telegram.
 
 ## Telegram Commands
 
 Once running, you can use these commands in Telegram:
 
-- `/start` - Register and get started
-- `/status` - Check account and portfolio status
+- `/start` - Register and get started with Investi
+- `/status` - Check your account and portfolio status
 - `/tasks` - See upcoming scheduled tasks
 - `/alerts` - See active conditional alerts
 - `/watchlists` - See all watchlists
+- `/set_operating_framework` - Set operational principles that guide Investi
 - `/set_alpaca` - Set your Alpaca API credentials
 - `/set_openrouter` - Set your OpenRouter API key
-- `/delete_account` - Delete your account and data
+- `/delete_account` - Delete your account and all associated data
 
 ## Disclaimer
 

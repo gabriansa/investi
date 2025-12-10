@@ -46,11 +46,13 @@ def setup_logger():
     error_handler.setFormatter(formatter)
     logger.addHandler(error_handler)
     
-    # Console handler (optional, for development)
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.INFO)
-    console_handler.setFormatter(formatter)
-    logger.addHandler(console_handler)
+    # Console handler only if stdout is a terminal (not redirected by systemd)
+    # This prevents double logging when systemd captures stdout to the log file
+    if sys.stdout.isatty():
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setLevel(logging.INFO)
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
     
     # Silence noisy third-party loggers
     logging.getLogger('httpx').setLevel(logging.WARNING)

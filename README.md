@@ -14,13 +14,12 @@ cd investi
 
 ### 2. Set Up PostgreSQL
 
-**For Raspberry Pi deployment:**
-Follow the detailed setup guide: **[RASPBERRY_PI_POSTGRES_SETUP.md](RASPBERRY_PI_POSTGRES_SETUP.md)**
-
-**For local development (Mac):**
 ```bash
+# Install PostgreSQL
 brew install postgresql@15
 brew services start postgresql@15
+
+# Create database
 createdb investi
 ```
 
@@ -58,26 +57,6 @@ TELEGRAM_BOT_TOKEN=your_telegram_bot_token
 python main.py
 ```
 
-## Database Management
-
-The bot uses PostgreSQL for data persistence. Several management scripts are available:
-
-```bash
-# Pull logs from Raspberry Pi
-./scripts/pull-prod.sh
-
-# Backup PostgreSQL database from Pi
-./scripts/backup-db.sh
-
-# Restore database from backup
-./scripts/restore-db.sh <backup_file>
-
-# Delete/reset database (WARNING: destructive!)
-./scripts/delete-db.sh
-```
-
-For complete database management documentation, see **[DATABASE_MANAGEMENT.md](DATABASE_MANAGEMENT.md)**
-
 ## API Keys Setup
 
 To use Investi, you'll need to get API keys from a few services:
@@ -95,10 +74,8 @@ To use Investi, you'll need to get API keys from a few services:
 
 ## Notes
 
-- The project uses PostgreSQL for production. See [RASPBERRY_PI_POSTGRES_SETUP.md](RASPBERRY_PI_POSTGRES_SETUP.md) for setup instructions.
-- PostgreSQL on the Pi automatically starts on boot and runs in the background.
-- Use the database management scripts in `scripts/` to backup, restore, and manage your database.
-- You can run this 24/7 on a server, Raspberry Pi, or any machine with Python.
+- The project uses PostgreSQL. PostgreSQL automatically starts on boot and runs in the background on Mac.
+- For production/Pi deployment, see [docs/POSTGRES_SETUP.md](docs/POSTGRES_SETUP.md).
 - Get your Telegram bot token by creating a bot with [@BotFather](https://t.me/botfather) on Telegram.
 
 ## Telegram Commands

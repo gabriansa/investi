@@ -28,7 +28,7 @@ async def set_alpaca_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     chat_id = update.effective_chat.id
     
     if not context.args or len(context.args) != 2:
-        await send_markdown_message(bot, chat_id, "Usage: `/set_alpaca <api_key> <secret_key>`")
+        await send_markdown_message(bot, chat_id, "Usage: /set_alpaca `<api_key>` `<secret_key>`")
         return
 
     # Delete the message containing secrets
@@ -67,7 +67,7 @@ async def set_openrouter_command(update: Update, context: ContextTypes.DEFAULT_T
     chat_id = update.effective_chat.id
     
     if not context.args or len(context.args) != 1:
-        await send_markdown_message(bot, chat_id, "Usage: `/set_openrouter <api_key>`")
+        await send_markdown_message(bot, chat_id, "Usage: /set_openrouter `<api_key>`")
         return
     
     # Delete the message containing secrets
@@ -122,7 +122,7 @@ async def set_operating_framework_command(update: Update, context: ContextTypes.
         "- principle one\n"
         "- principle two\n"
         "- principle three\n\n"
-        "Send `/empty` to keep it empty."
+        "Send /empty to keep it empty."
     )
     await send_markdown_message(bot, chat_id, instructions)
 
@@ -194,7 +194,7 @@ async def watchlists_command(update: Update):
     response = await user_service.get_watchlists(telegram_user_id)
     await send_markdown_message(bot, chat_id, response)
 
-async def delete_account_command(update: Update):
+async def delete_account_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /delete_account command."""
     user_service = UserService()
     telegram_user_id = update.effective_user.id
@@ -202,10 +202,24 @@ async def delete_account_command(update: Update):
     chat_id = update.effective_chat.id
     
     logger.info(f"User {telegram_user_id} executed /delete_account command")
-
-    success, message = await user_service.delete_account(telegram_user_id)
     
-    if success:
-        logger.info(f"User {telegram_user_id} successfully deleted their account")
+    exists, message = await user_service.user_exists(telegram_user_id)
     
-    await send_markdown_message(bot, chat_id, message)
+    if not exists:
+        await send_markdown_message(bot, chat_id, message)
+        return
+    
+    # Set state to indicate we're waiting for deletion confirmation
+    context.user_data['awaiting_account_deletion_confirmation'] = True
+    
+    confirmation_message = (
+        "This action is *permanent* and will delete:\n"
+        "• Your account and all settings\n"
+        "• All saved notes and data\n"
+        "• All tasks and alerts\n"
+        "• All watchlists\n\n"
+        "To confirm, please type exactly:\n"
+        "`I want to delete my account`\n\n"
+        "To cancel, send any other message or use /delete_account again."
+    )
+    await send_markdown_message(bot, chat_id, confirmation_message)

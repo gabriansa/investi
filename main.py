@@ -104,7 +104,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("set_openrouter", lambda update, context: set_openrouter_command(update, context)))
     app.add_handler(CommandHandler("set_operating_framework", lambda update, context: set_operating_framework_command(update, context)))
     app.add_handler(CommandHandler("empty", lambda update, context: empty_command(update, context)))
-    app.add_handler(CommandHandler("delete_account", lambda update, context: delete_account_command(update)))
+    app.add_handler(CommandHandler("delete_account", lambda update, context: delete_account_command(update, context)))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, lambda update, context: handle_message(update, context, config)))
     app.add_error_handler(error_handler)
     

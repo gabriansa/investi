@@ -11,7 +11,7 @@ async def send_message_with_retry(bot, chat_id: int, text: str, parse_mode: str 
     """Send message with automatic retry on timeout."""
     for attempt in range(max_retries):
         try:
-            await bot.send_message(chat_id=chat_id, text=text, parse_mode=parse_mode)
+            await bot.send_message(chat_id=chat_id, text=text, parse_mode=parse_mode, disable_web_page_preview=True)
             return
         except TimedOut:
             if attempt < max_retries - 1:

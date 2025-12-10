@@ -71,11 +71,23 @@ class UserService:
             )
             message = (
                 "*Welcome to Investi!*\n\n"
-                "To get started, please provide:\n\n"
-                "• *Alpaca API credentials* using:\n"
-                "  `/set_alpaca <api_key> <secret_key>`\n\n"
-                "• *OpenRouter API key* using:\n"
-                "  `/set_openrouter <api_key>`"
+                "**Step 1: Create Your Accounts**\n"
+                "- *Alpaca* - Brokerage platform; [Sign up here](https://app.alpaca.markets/signup)."
+                " _Strongly recommend using a paper trading account unless you enjoy living on the edge._\n"
+                "- *OpenRouter* - AI API provider; [Sign up here](https://openrouter.ai/).\n\n"
+                "**Step 2: Set Your API Credentials**\n"
+                "Once you have your accounts, connect them:\n"
+                "- *Alpaca credentials:* /set_alpaca `<api_key>` `<secret_key>`\n"
+                "- *OpenRouter API key:* /set_openrouter `<api_key>`\n\n"
+                "**Step 3: Set Your Operating Framework** with: /set_operating_framework\n"
+                "Define the principles that guide your trading decisions. This helps me understand your risk tolerance, strategy preferences, and goals.\n\n"
+                "_Example framework:_\n"
+                "```\n"
+                "- Never risk more than 2% per trade\n"
+                "- Focus on tech stocks with strong fundamentals\n"
+                "- Hold positions for 3-6 months minimum\n"
+                "```\n\n"
+                "Complete these steps and you'll be all set. After that just send a message and I'll get to work!"
             )
         return True, message
     
@@ -158,9 +170,9 @@ class UserService:
             message = (
                 "To get started, please provide:\n\n" +
                 ("• *Alpaca API credentials* using:\n" +
-                 "  `/set_alpaca <api_key> <secret_key>`\n\n" if not is_alpaca_valid else "") +
+                 "  /set_alpaca `<api_key>` `<secret_key>`\n\n" if not is_alpaca_valid else "") +
                 ("• *OpenRouter API key* using:\n" +
-                 "  `/set_openrouter <api_key>`\n\n" if not is_openrouter_valid else "")
+                 "  /set_openrouter `<api_key>`\n\n" if not is_openrouter_valid else "")
             )
             return None, message
 
@@ -204,21 +216,19 @@ class UserService:
             key_details_success, key_details_response = key_details_result
             
         except asyncio.TimeoutError:
-            return "⚠️ Request timed out. Please try again."
+            return "_Request timed out. Please try again._"
 
         status_lines = []
         
         # Account Summary
         if account_success:
             acc = account_response
-            status_lines.append("*💰 Account*")
-            status_lines.append(f"• Equity: `${float(acc['equity']):,.2f}`")
+            status_lines.append("**Account**")
+            status_lines.append(f"• Portfolio Value: `${float(acc['portfolio_value']):,.2f}`")
             status_lines.append(f"• Cash: `${float(acc['cash']):,.2f}`")
-            status_lines.append(f"• Buying Power: `${float(acc['buying_power']):,.2f}`")
-            status_lines.append(f"• Leverage: `{acc['multiplier']}x`")
         
         # Positions
-        status_lines.append("\n*💼 Positions*")
+        status_lines.append("\n**Positions**")
         if positions_success and positions_response:
             total_pl = 0
             total_cost_basis = 0
@@ -245,7 +255,7 @@ class UserService:
             status_lines.append("_No open positions_")
         
         # Orders
-        status_lines.append("\n*📋 Orders*")
+        status_lines.append("\n**Orders**")
         if orders_success and orders_response:
             for order in orders_response:
                 side_label = "Buy" if order['side'] == 'buy' else "Sell"
@@ -271,7 +281,7 @@ class UserService:
             status_lines.append("_No pending orders_")
         
         # API Usage
-        status_lines.append("\n*💳 API Usage*")
+        status_lines.append("\n**API Usage**")
         if key_details_success:
             data = key_details_response.get('data', {})
             status_lines.append(
@@ -297,7 +307,7 @@ class UserService:
             )
             upcoming_tasks = [dict(row) for row in rows]
         
-        lines = ["*⏰ Upcoming Tasks*\n"]
+        lines = ["**Upcoming Tasks**\n"]
         if upcoming_tasks:
             for task in upcoming_tasks:
                 ticker = f"*{task['ticker_symbol']}* " if task['ticker_symbol'] else ""
@@ -325,7 +335,7 @@ class UserService:
             )
             active_alerts = [dict(row) for row in rows]
         
-        lines = ["*🚨 Active Alerts*\n"]
+        lines = ["**Active Alerts**\n"]
         if active_alerts:
             for alert in active_alerts:
                 config = json.loads(alert['trigger_config']) if isinstance(alert['trigger_config'], str) else alert['trigger_config']
@@ -364,7 +374,7 @@ class UserService:
             )
             watchlists = [dict(row) for row in rows]
         
-        lines = ["*👀 Watchlists*\n"]
+        lines = ["**Watchlists**\n"]
         if watchlists:
             for wl in watchlists:
                 # assets is already a list from JSONB

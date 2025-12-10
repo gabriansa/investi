@@ -25,6 +25,31 @@ async def _process_message(update: Update, context: ContextTypes.DEFAULT_TYPE, c
     telegram_user_id = update.effective_user.id
     username = update.effective_user.username or update.effective_user.first_name or "Unknown"
     
+    # Check if user is awaiting account deletion confirmation
+    if context.user_data.get('awaiting_account_deletion_confirmation'):
+        logger.info(f"User {telegram_user_id} responding to account deletion confirmation")
+        
+        # Check if user typed the exact confirmation phrase
+        if text.strip() == "I want to delete my account":
+            context.user_data['awaiting_account_deletion_confirmation'] = False
+            
+            success, message = await user_service.delete_account(telegram_user_id)
+            
+            if success:
+                logger.info(f"User {telegram_user_id} successfully deleted their account")
+            
+            await send_markdown_message(context.bot, update.effective_chat.id, message)
+            return
+        else:
+            # User didn't type the correct confirmation
+            context.user_data['awaiting_account_deletion_confirmation'] = False
+            error_message = (
+                "The confirmation phrase was not correct.\n\n"
+                "If you still want to delete your account, please use /delete_account again."
+            )
+            await send_markdown_message(context.bot, update.effective_chat.id, error_message)
+            return
+    
     # Check if user is awaiting operating framework input
     if context.user_data.get('awaiting_operating_framework'):
         logger.info(f"User {telegram_user_id} submitting operating framework")
@@ -37,7 +62,7 @@ async def _process_message(update: Update, context: ContextTypes.DEFAULT_TYPE, c
                 "- principle one\n"
                 "- principle two\n"
                 "- principle three\n\n"
-                "Send `/empty` to keep it empty."
+                "Send /empty to keep it empty."
             )
             await send_markdown_message(context.bot, update.effective_chat.id, error_message)
             return

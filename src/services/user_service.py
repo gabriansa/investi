@@ -1,22 +1,23 @@
 import json
+import asyncio
 from datetime import datetime, timezone
 from src.api.alpaca import AlpacaAPI
 from src.api.openrouter import OpenRouterAPI
-from src.services.database import get_db_connection
+from src.services.database import get_async_db_connection
+from src.utils import format_timestamp
 
 
 class UserService:
     """Service for managing user data and credentials."""
     
-    def user_exists(self, telegram_user_id: int) -> tuple[bool, str]:
+    async def user_exists(self, telegram_user_id: int) -> tuple[bool, str]:
         """Check if a user exists."""
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT 1 FROM users WHERE telegram_user_id = ?",
-                (telegram_user_id,)
+        async with get_async_db_connection() as conn:
+            result = await conn.fetchval(
+                "SELECT 1 FROM users WHERE telegram_user_id = $1",
+                telegram_user_id
             )
-            if cursor.fetchone() is not None:
+            if result is not None:
                 return True, "User already exists"
             else:
                 return False, "Please use /start to register first"
@@ -56,18 +57,17 @@ class UserService:
             f"[Top up your OpenRouter credits](https://openrouter.ai/settings/credits)"
         )
 
-    def register_user(self, telegram_user_id: int) -> tuple[bool, str]:
+    async def register_user(self, telegram_user_id: int, telegram_username: str = None) -> tuple[bool, str]:
         """Register a new user."""
-        is_exists, message = self.user_exists(telegram_user_id)
+        is_exists, message = await self.user_exists(telegram_user_id)
         if is_exists:
             return False, message
         
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                """INSERT INTO users (telegram_user_id, created_at) 
-                   VALUES (?, ?)""",
-                (telegram_user_id, datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S %Z"))
+        async with get_async_db_connection() as conn:
+            await conn.execute(
+                """INSERT INTO users (telegram_user_id, telegram_username, created_at) 
+                   VALUES ($1, $2, $3)""",
+                telegram_user_id, telegram_username, datetime.now(timezone.utc)
             )
             message = (
                 "*Welcome to Investi!*\n\n"
@@ -79,63 +79,80 @@ class UserService:
             )
         return True, message
     
-    def set_alpaca_credentials(self, telegram_user_id: int, api_key: str, secret_key: str) -> tuple[bool, str]:
+    async def set_alpaca_credentials(self, telegram_user_id: int, api_key: str, secret_key: str) -> tuple[bool, str]:
         """
         Set Alpaca credentials for a user.
         Returns (success, message).
         """
         try:
-            with get_db_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute(
+            async with get_async_db_connection() as conn:
+                await conn.execute(
                     """UPDATE users 
-                    SET alpaca_api_key = ?, alpaca_secret_key = ?
-                    WHERE telegram_user_id = ?""",
-                    (api_key, secret_key, telegram_user_id)
+                    SET alpaca_api_key = $1, alpaca_secret_key = $2
+                    WHERE telegram_user_id = $3""",
+                    api_key, secret_key, telegram_user_id
                 )
             return True, "Alpaca credentials saved successfully"
         except:
             return False, "Error saving Alpaca credentials"
     
-    def set_openrouter_credentials(self, telegram_user_id: int, api_key: str) -> tuple[bool, str]:
+    async def set_openrouter_credentials(self, telegram_user_id: int, api_key: str) -> tuple[bool, str]:
         """
         Set OpenRouter API key for a user.
         Returns (success, message).
         """
         try:
-            with get_db_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute(
+            async with get_async_db_connection() as conn:
+                await conn.execute(
                     """UPDATE users 
-                    SET openrouter_api_key = ?
-                    WHERE telegram_user_id = ?""",
-                    (api_key.strip(), telegram_user_id)
+                    SET openrouter_api_key = $1
+                    WHERE telegram_user_id = $2""",
+                    api_key.strip(), telegram_user_id
                 )
             return True, "OpenRouter API key saved successfully"
         except:
             return False, "Error saving OpenRouter API key"
     
-    def get_user(self, telegram_user_id: int) -> tuple[dict, str]:
+    async def set_operating_framework(self, telegram_user_id: int, framework_text: str) -> tuple[bool, str]:
+        """
+        Set operating framework for a user.
+        Returns (success, message).
+        """
+        try:
+            async with get_async_db_connection() as conn:
+                await conn.execute(
+                    """UPDATE users 
+                    SET operating_framework = $1
+                    WHERE telegram_user_id = $2""",
+                    framework_text.strip(), telegram_user_id
+                )
+            return True, "Operating framework saved successfully"
+        except:
+            return False, "Error saving operating framework"
+    
+    async def get_user(self, telegram_user_id: int) -> tuple[dict, str]:
         """
         Check if user has all required credentials set.
         Returns (is_valid, error_message).
         """
-        exists, message = self.user_exists(telegram_user_id)
+        exists, message = await self.user_exists(telegram_user_id)
 
         if not exists:
             return None, message
         
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT * FROM users WHERE telegram_user_id = ?",
-                (telegram_user_id,)
+        async with get_async_db_connection() as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM users WHERE telegram_user_id = $1",
+                telegram_user_id
             )
-            row = cursor.fetchone()
             user = dict(row)
 
-        is_alpaca_valid, _ = self.validate_alpaca_credentials(user['alpaca_api_key'], user['alpaca_secret_key'])
-        is_openrouter_valid, _ = self.validate_openrouter_credentials(user['openrouter_api_key'])
+        is_alpaca_valid, _ = await asyncio.to_thread(
+            self.validate_alpaca_credentials, user['alpaca_api_key'], user['alpaca_secret_key']
+        )
+        is_openrouter_valid, _ = await asyncio.to_thread(
+            self.validate_openrouter_credentials, user['openrouter_api_key']
+        )
 
         if not is_alpaca_valid or not is_openrouter_valid:
             message = (
@@ -149,9 +166,9 @@ class UserService:
 
         return user, "All credentials are valid"
 
-    def get_status(self, telegram_user_id: int) -> str:
+    async def get_status(self, telegram_user_id: int) -> str:
         """Get the status of the user's account, positions, orders, and API usage."""
-        user, message = self.get_user(telegram_user_id)
+        user, message = await self.get_user(telegram_user_id)
         if user is None:
             return message
 
@@ -162,16 +179,32 @@ class UserService:
         )
         openrouter_api = OpenRouterAPI(api_key=user['openrouter_api_key'])
         
-        account_success, account_response = alpaca_api.get_account()
-        orders_success, orders_response = alpaca_api.get_orders()
-        positions_success, positions_response = alpaca_api.get_all_positions()
-        key_details_success, key_details_response = openrouter_api.get_key_details()
-
-        # Get notes count
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM notes WHERE telegram_user_id = ?", (telegram_user_id,))
-            notes_count = cursor.fetchone()[0]
+        # Run all API calls in parallel with timeout
+        try:
+            results = await asyncio.wait_for(
+                asyncio.gather(
+                    asyncio.to_thread(alpaca_api.get_account),
+                    asyncio.to_thread(alpaca_api.get_orders),
+                    asyncio.to_thread(alpaca_api.get_all_positions),
+                    asyncio.to_thread(openrouter_api.get_key_details),
+                    return_exceptions=True
+                ),
+                timeout=10.0
+            )
+            
+            # Unpack results
+            account_result = results[0] if not isinstance(results[0], Exception) else (False, {})
+            orders_result = results[1] if not isinstance(results[1], Exception) else (False, [])
+            positions_result = results[2] if not isinstance(results[2], Exception) else (False, [])
+            key_details_result = results[3] if not isinstance(results[3], Exception) else (False, {})
+            
+            account_success, account_response = account_result
+            orders_success, orders_response = orders_result
+            positions_success, positions_response = positions_result
+            key_details_success, key_details_response = key_details_result
+            
+        except asyncio.TimeoutError:
+            return "⚠️ Request timed out. Please try again."
 
         status_lines = []
         
@@ -246,34 +279,29 @@ class UserService:
                 f"• Monthly: `${data.get('usage_monthly', 0):.2f}`"
             )
         
-        # Notes
-        status_lines.append(f"\n*📝 Notes*")
-        status_lines.append(f"• Total: `{notes_count}`")
-        
         return "\n".join(status_lines)
     
-    def get_tasks(self, telegram_user_id: int) -> str:
+    async def get_tasks(self, telegram_user_id: int) -> str:
         """Get all upcoming tasks for the user."""
-        user, message = self.get_user(telegram_user_id)
+        user, message = await self.get_user(telegram_user_id)
         if user is None:
             return message
         
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
+        async with get_async_db_connection() as conn:
+            rows = await conn.fetch(
                 """SELECT description, task_datetime, ticker_symbol, trigger_type 
                    FROM tasks 
-                   WHERE telegram_user_id = ? AND is_active = 1 AND task_datetime IS NOT NULL
+                   WHERE telegram_user_id = $1 AND is_active = TRUE AND task_datetime IS NOT NULL
                    ORDER BY task_datetime""",
-                (telegram_user_id,)
+                telegram_user_id
             )
-            upcoming_tasks = [dict(row) for row in cursor.fetchall()]
+            upcoming_tasks = [dict(row) for row in rows]
         
         lines = ["*⏰ Upcoming Tasks*\n"]
         if upcoming_tasks:
             for task in upcoming_tasks:
                 ticker = f"*{task['ticker_symbol']}* " if task['ticker_symbol'] else ""
-                task_time = task['task_datetime'].split(' ')[0]  # Just show the date
+                task_time = format_timestamp(task['task_datetime'])
                 desc = task['description'][:60] + "..." if len(task['description']) > 60 else task['description']
                 lines.append(f"• {ticker}`{task_time}`: _{desc}_")
         else:
@@ -281,27 +309,26 @@ class UserService:
         
         return "\n".join(lines)
     
-    def get_alerts(self, telegram_user_id: int) -> str:
+    async def get_alerts(self, telegram_user_id: int) -> str:
         """Get all active alerts for the user."""
-        user, message = self.get_user(telegram_user_id)
+        user, message = await self.get_user(telegram_user_id)
         if user is None:
             return message
         
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
+        async with get_async_db_connection() as conn:
+            rows = await conn.fetch(
                 """SELECT description, ticker_symbol, trigger_config 
                    FROM tasks 
-                   WHERE telegram_user_id = ? AND is_active = 1 AND trigger_type = 'conditional'
+                   WHERE telegram_user_id = $1 AND is_active = TRUE AND trigger_type = 'conditional'
                    ORDER BY created_at""",
-                (telegram_user_id,)
+                telegram_user_id
             )
-            active_alerts = [dict(row) for row in cursor.fetchall()]
+            active_alerts = [dict(row) for row in rows]
         
         lines = ["*🚨 Active Alerts*\n"]
         if active_alerts:
             for alert in active_alerts:
-                config = json.loads(alert['trigger_config'])
+                config = json.loads(alert['trigger_config']) if isinstance(alert['trigger_config'], str) else alert['trigger_config']
                 ticker = f"*{alert['ticker_symbol']}* " if alert['ticker_symbol'] else ""
                 
                 # Format condition nicely
@@ -324,21 +351,24 @@ class UserService:
         
         return "\n".join(lines)
     
-    def get_watchlists(self, telegram_user_id: int) -> str:
+    async def get_watchlists(self, telegram_user_id: int) -> str:
         """Get all watchlists for the user."""
-        user, message = self.get_user(telegram_user_id)
+        user, message = await self.get_user(telegram_user_id)
         if user is None:
             return message
         
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT watchlist_name, assets FROM watchlists WHERE telegram_user_id = ?", (telegram_user_id,))
-            watchlists = [dict(row) for row in cursor.fetchall()]
+        async with get_async_db_connection() as conn:
+            rows = await conn.fetch(
+                "SELECT watchlist_name, assets FROM watchlists WHERE telegram_user_id = $1",
+                telegram_user_id
+            )
+            watchlists = [dict(row) for row in rows]
         
         lines = ["*👀 Watchlists*\n"]
         if watchlists:
             for wl in watchlists:
-                assets = json.loads(wl['assets']) if isinstance(wl['assets'], str) else wl['assets']
+                # assets is already a list from JSONB
+                assets = wl['assets'] if isinstance(wl['assets'], list) else json.loads(wl['assets'])
                 asset_count = len(assets)
                 lines.append(f"• *{wl['watchlist_name']}*: `{asset_count}` assets ({', '.join(assets)})")
         else:
@@ -346,56 +376,53 @@ class UserService:
         
         return "\n".join(lines)
     
-    def delete_account(self, telegram_user_id: int) -> tuple[bool, str]:
+    async def delete_account(self, telegram_user_id: int) -> tuple[bool, str]:
         """
         Delete a user account and all associated data.
         Returns (success, message).
         """
-        exists, message = self.user_exists(telegram_user_id)
+        exists, message = await self.user_exists(telegram_user_id)
         if not exists:
             return False, message
         
         try:
-            with get_db_connection() as conn:
-                cursor = conn.cursor()
-                
+            async with get_async_db_connection() as conn:
                 # First, get all note_ids for this user to delete embeddings
-                cursor.execute(
-                    "SELECT note_id FROM notes WHERE telegram_user_id = ?",
-                    (telegram_user_id,)
+                note_ids = await conn.fetch(
+                    "SELECT note_id FROM notes WHERE telegram_user_id = $1",
+                    telegram_user_id
                 )
-                note_ids = [row[0] for row in cursor.fetchall()]
+                note_id_list = [row['note_id'] for row in note_ids]
                 
                 # Delete note embeddings
-                if note_ids:
-                    placeholders = ','.join('?' * len(note_ids))
-                    cursor.execute(
-                        f"DELETE FROM note_embeddings WHERE note_id IN ({placeholders})",
-                        note_ids
+                if note_id_list:
+                    await conn.execute(
+                        "DELETE FROM note_embeddings WHERE note_id = ANY($1)",
+                        note_id_list
                     )
                 
                 # Delete tasks
-                cursor.execute(
-                    "DELETE FROM tasks WHERE telegram_user_id = ?",
-                    (telegram_user_id,)
+                await conn.execute(
+                    "DELETE FROM tasks WHERE telegram_user_id = $1",
+                    telegram_user_id
                 )
                 
                 # Delete notes
-                cursor.execute(
-                    "DELETE FROM notes WHERE telegram_user_id = ?",
-                    (telegram_user_id,)
+                await conn.execute(
+                    "DELETE FROM notes WHERE telegram_user_id = $1",
+                    telegram_user_id
                 )
                 
                 # Delete watchlists
-                cursor.execute(
-                    "DELETE FROM watchlists WHERE telegram_user_id = ?",
-                    (telegram_user_id,)
+                await conn.execute(
+                    "DELETE FROM watchlists WHERE telegram_user_id = $1",
+                    telegram_user_id
                 )
                 
                 # Finally, delete the user
-                cursor.execute(
-                    "DELETE FROM users WHERE telegram_user_id = ?",
-                    (telegram_user_id,)
+                await conn.execute(
+                    "DELETE FROM users WHERE telegram_user_id = $1",
+                    telegram_user_id
                 )
             return True, "Account and all associated data have been deleted successfully"
         except Exception as e:

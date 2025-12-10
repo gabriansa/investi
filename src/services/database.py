@@ -1,146 +1,128 @@
 import os
-import sqlite3
-from contextlib import contextmanager
+import logging
+import asyncpg
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
 load_dotenv()
 
-DATABASE_PATH = os.getenv('DATABASE_PATH')
+logger = logging.getLogger(__name__)
+DATABASE_URL = os.getenv('DATABASE_URL')
 
-@contextmanager
-def get_db_connection():
-    """Context manager for database connections."""
-    conn = sqlite3.connect(DATABASE_PATH)
-    conn.row_factory = sqlite3.Row  # Enable column access by name
-    conn.execute("PRAGMA foreign_keys = ON")  # Enable foreign key constraints
+# Connection pool for async operations (shared across the application)
+_pool = None
+
+async def get_pool():
+    """Get or create the connection pool for async operations."""
+    global _pool
+    if _pool is None:
+        _pool = await asyncpg.create_pool(
+            DATABASE_URL,
+            min_size=2,
+            max_size=10,
+            command_timeout=30.0
+        )
+    return _pool
+
+@asynccontextmanager
+async def get_async_db_connection():
+    """Async context manager for database connections using connection pool."""
+    pool = await get_pool()
+    conn = await pool.acquire()
+    transaction = conn.transaction()
+    await transaction.start()
     try:
         yield conn
-        conn.commit()
+        await transaction.commit()
     except Exception:
-        conn.rollback()
+        await transaction.rollback()
         raise
     finally:
-        conn.close()
+        await pool.release(conn)
 
-def init_database():
+async def init_database():
     """Initialize database tables if they don't exist."""
-    os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
-    
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        
+    pool = await get_pool()
+    async with pool.acquire() as conn:
         # Users table
-        cursor.execute("""
+        await conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
-                telegram_user_id INTEGER PRIMARY KEY,
-                created_at TEXT NOT NULL,
+                telegram_user_id BIGINT PRIMARY KEY,
+                telegram_username TEXT,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL,
                 alpaca_api_key TEXT,
                 alpaca_secret_key TEXT,
-                openrouter_api_key TEXT
+                openrouter_api_key TEXT,
+                operating_framework TEXT
             )
         """)
         
         # Tasks table
-        cursor.execute("""
+        await conn.execute("""
             CREATE TABLE IF NOT EXISTS tasks (
                 task_id TEXT PRIMARY KEY,
-                telegram_user_id INTEGER NOT NULL,
-                created_at TEXT NOT NULL,
+                telegram_user_id BIGINT NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL,
                 ticker_symbol TEXT,
                 role TEXT NOT NULL,
                 description TEXT NOT NULL,
-                task_datetime TEXT,
-                is_active INTEGER NOT NULL DEFAULT 1,
+                task_datetime TIMESTAMP WITH TIME ZONE,
+                is_active BOOLEAN NOT NULL DEFAULT TRUE,
                 trigger_type TEXT NOT NULL,
-                trigger_config TEXT,
-                related_note_ids TEXT,
-                related_task_ids TEXT,
-                related_watchlist_ids TEXT,
+                trigger_config JSONB,
+                related_note_ids JSONB,
+                related_task_ids JSONB,
+                related_watchlist_ids JSONB,
                 FOREIGN KEY (telegram_user_id) REFERENCES users (telegram_user_id) ON DELETE CASCADE
             )
         """)
         
-        # Create indexes for common queries
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_tasks_user_active 
-            ON tasks(telegram_user_id, is_active)
-        """)
-        
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_tasks_active_datetime 
-            ON tasks(is_active, task_datetime)
-        """)
-        
         # Notes table
-        cursor.execute("""
+        await conn.execute("""
             CREATE TABLE IF NOT EXISTS notes (
                 note_id TEXT PRIMARY KEY,
-                telegram_user_id INTEGER NOT NULL,
-                created_at TEXT NOT NULL,
+                telegram_user_id BIGINT NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL,
                 ticker_symbol TEXT,
                 topic TEXT NOT NULL,
                 role TEXT NOT NULL,
                 note TEXT NOT NULL,
-                related_note_ids TEXT,
-                related_task_ids TEXT,
-                related_watchlist_ids TEXT,
+                related_note_ids JSONB,
+                related_task_ids JSONB,
+                related_watchlist_ids JSONB,
                 FOREIGN KEY (telegram_user_id) REFERENCES users (telegram_user_id) ON DELETE CASCADE
             )
-        """)
-        
-        # Create indexes for common queries
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_notes_user 
-            ON notes(telegram_user_id)
-        """)
-        
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_notes_ticker 
-            ON notes(ticker_symbol)
-        """)
-        
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_notes_topic 
-            ON notes(topic)
-        """)
-        
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_notes_created_at 
-            ON notes(created_at)
         """)
         
         # Watchlists table
-        cursor.execute("""
+        await conn.execute("""
             CREATE TABLE IF NOT EXISTS watchlists (
                 watchlist_id TEXT PRIMARY KEY,
-                telegram_user_id INTEGER NOT NULL,
-                created_at TEXT NOT NULL,
+                telegram_user_id BIGINT NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL,
                 watchlist_name TEXT NOT NULL,
-                assets TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
+                assets JSONB NOT NULL,
+                updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
                 FOREIGN KEY (telegram_user_id) REFERENCES users (telegram_user_id) ON DELETE CASCADE
             )
         """)
         
-        # Create indexes for common queries
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_watchlists_user 
-            ON watchlists(telegram_user_id)
-        """)
-        
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_watchlists_name 
-            ON watchlists(telegram_user_id, watchlist_name)
-        """)
-        
         # Note embeddings table
-        cursor.execute("""
+        await conn.execute("""
             CREATE TABLE IF NOT EXISTS note_embeddings (
                 note_id TEXT PRIMARY KEY,
-                embedding BLOB NOT NULL,
+                embedding BYTEA NOT NULL,
                 FOREIGN KEY (note_id) REFERENCES notes (note_id) ON DELETE CASCADE
             )
         """)
-        
-        conn.commit()
 
+async def close_pool():
+    """Close the connection pool on shutdown."""
+    global _pool
+    if _pool is not None:
+        try:
+            await _pool.close()
+        except Exception as e:
+            logger.error(f"Error closing connection pool: {e}")
+        finally:
+            _pool = None

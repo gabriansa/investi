@@ -4,13 +4,13 @@ from datetime import datetime, timezone
 from typing import Literal
 from agents import RunContextWrapper, function_tool
 from src.agent.context import Context
-from src.services.database import get_db_connection
+from src.services.database import get_async_db_connection
 from src.tools.types import RoleLiteral
-from src.utils import validate_date
+from src.utils import validate_date, format_timestamp
 
 
 @function_tool
-def set_one_time_task(
+async def set_one_time_task(
     ctx: RunContextWrapper[Context],
     role: RoleLiteral,
     description: str,
@@ -35,44 +35,40 @@ def set_one_time_task(
     success, task_dt = validate_date(
         task_datetime,
         input_format="%Y-%m-%d %H:%M:%S",
-        output_format="%Y-%m-%d %H:%M:%S %Z",
         check_future=True
     )
     if not success:
-        return {"error": f"Invalid datetime format. Use YYYY-MM-DD HH:MM:SS format and ensure it's in the future. Current time is {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S %Z')}"}
+        return {"error": f"Invalid datetime format. Use YYYY-MM-DD HH:MM:SS format and ensure it's in the future. Current time is {format_timestamp(datetime.now(timezone.utc))}"}
 
     task_id = str(uuid.uuid4())
-    created_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S %Z")
+    created_at = datetime.now(timezone.utc)
     
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
+    async with get_async_db_connection() as conn:
+        await conn.execute(
             """INSERT INTO tasks (
                 task_id, telegram_user_id, created_at, ticker_symbol, role, description,
                 task_datetime, is_active, trigger_type, trigger_config,
                 related_note_ids, related_task_ids, related_watchlist_ids
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                task_id,
-                ctx.context.user_id,
-                created_at,
-                ticker_symbol,
-                role,
-                description,
-                task_dt,
-                1,  # is_active
-                "one_time",
-                None,  # trigger_config
-                json.dumps(related_note_ids) if related_note_ids else None,
-                json.dumps(related_task_ids) if related_task_ids else None,
-                json.dumps(related_watchlist_ids) if related_watchlist_ids else None,
-            )
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)""",
+            task_id,
+            ctx.context.user_id,
+            created_at,
+            ticker_symbol,
+            role,
+            description,
+            task_dt,
+            True,  # is_active
+            "one_time",
+            None,  # trigger_config
+            json.dumps(related_note_ids) if related_note_ids else None,
+            json.dumps(related_task_ids) if related_task_ids else None,
+            json.dumps(related_watchlist_ids) if related_watchlist_ids else None,
         )
 
     return f"One-time task with ID {task_id} created"
 
 @function_tool
-def set_recurring_task(
+async def set_recurring_task(
     ctx: RunContextWrapper[Context],
     role: RoleLiteral,
     description: str,
@@ -105,21 +101,19 @@ def set_recurring_task(
     success, task_dt = validate_date(
         first_task_datetime,
         input_format="%Y-%m-%d %H:%M:%S",
-        output_format="%Y-%m-%d %H:%M:%S %Z",
         check_future=True
     )
     if not success:
-        return {"error": f"Invalid datetime format. Use YYYY-MM-DD HH:MM:SS format and ensure it's in the future. Current time is {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S %Z')}"}
+        return {"error": f"Invalid datetime format. Use YYYY-MM-DD HH:MM:SS format and ensure it's in the future. Current time is {format_timestamp(datetime.now(timezone.utc))}"}
     
     if ends_type == "on" and ends_value:
         success, ends_value = validate_date(
             ends_value,
             input_format="%Y-%m-%d %H:%M:%S",
-            output_format="%Y-%m-%d %H:%M:%S %Z",
             check_future=True
         )
         if not success:
-            return {"error": f"Invalid end datetime format. Use YYYY-MM-DD HH:MM:SS format and ensure it's in the future. Current time is {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S %Z')}"}
+            return {"error": f"Invalid end datetime format. Use YYYY-MM-DD HH:MM:SS format and ensure it's in the future. Current time is {format_timestamp(datetime.now(timezone.utc))}"}
     elif ends_type == "after" and ends_value:
         try:
             int(ends_value)
@@ -134,37 +128,34 @@ def set_recurring_task(
     }
     
     task_id = str(uuid.uuid4())
-    created_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S %Z")
+    created_at = datetime.now(timezone.utc)
     
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
+    async with get_async_db_connection() as conn:
+        await conn.execute(
             """INSERT INTO tasks (
                 task_id, telegram_user_id, created_at, ticker_symbol, role, description,
                 task_datetime, is_active, trigger_type, trigger_config,
                 related_note_ids, related_task_ids, related_watchlist_ids
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                task_id,
-                ctx.context.user_id,
-                created_at,
-                ticker_symbol,
-                role,
-                description,
-                task_dt,
-                1,  # is_active
-                "recurring",
-                json.dumps(trigger_config),
-                json.dumps(related_note_ids) if related_note_ids else None,
-                json.dumps(related_task_ids) if related_task_ids else None,
-                json.dumps(related_watchlist_ids) if related_watchlist_ids else None,
-            )
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)""",
+            task_id,
+            ctx.context.user_id,
+            created_at,
+            ticker_symbol,
+            role,
+            description,
+            task_dt,
+            True,  # is_active
+            "recurring",
+            json.dumps(trigger_config),
+            json.dumps(related_note_ids) if related_note_ids else None,
+            json.dumps(related_task_ids) if related_task_ids else None,
+            json.dumps(related_watchlist_ids) if related_watchlist_ids else None,
         )
     
     return f"Recurring task with ID {task_id} created"
 
 @function_tool
-def set_conditional_task(
+async def set_conditional_task(
     ctx: RunContextWrapper[Context],
     role: RoleLiteral,
     description: str,
@@ -201,37 +192,34 @@ def set_conditional_task(
     }
     
     task_id = str(uuid.uuid4())
-    created_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S %Z")
+    created_at = datetime.now(timezone.utc)
     
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
+    async with get_async_db_connection() as conn:
+        await conn.execute(
             """INSERT INTO tasks (
                 task_id, telegram_user_id, created_at, ticker_symbol, role, description,
                 task_datetime, is_active, trigger_type, trigger_config,
                 related_note_ids, related_task_ids, related_watchlist_ids
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                task_id,
-                ctx.context.user_id,
-                created_at,
-                ticker_symbol,
-                role,
-                description,
-                None,  # task_datetime is NULL for conditional tasks
-                1,  # is_active
-                "conditional",
-                json.dumps(trigger_config),
-                json.dumps(related_note_ids) if related_note_ids else None,
-                json.dumps(related_task_ids) if related_task_ids else None,
-                json.dumps(related_watchlist_ids) if related_watchlist_ids else None,
-            )
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)""",
+            task_id,
+            ctx.context.user_id,
+            created_at,
+            ticker_symbol,
+            role,
+            description,
+            None,  # task_datetime is NULL for conditional tasks
+            True,  # is_active
+            "conditional",
+            json.dumps(trigger_config),
+            json.dumps(related_note_ids) if related_note_ids else None,
+            json.dumps(related_task_ids) if related_task_ids else None,
+            json.dumps(related_watchlist_ids) if related_watchlist_ids else None,
         )
     
     return f"Conditional task with ID {task_id} created"
 
 @function_tool
-def get_tasks(
+async def get_tasks(
     ctx: RunContextWrapper[Context],
     task_ids: list[str] | None,
     ticker_symbol: str | None,
@@ -250,43 +238,61 @@ def get_tasks(
     if not task_ids and not ticker_symbol and not is_active and not trigger_type:
         return {"error": "At least one filter (task_ids, ticker_symbol, is_active, or trigger_type) must be provided."}
     
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        
+    async with get_async_db_connection() as conn:
         # Build query
-        query = "SELECT * FROM tasks WHERE telegram_user_id = ?"
+        query = "SELECT * FROM tasks WHERE telegram_user_id = $1"
         params = [ctx.context.user_id]
+        param_counter = 2
         
         # Apply filters
         if task_ids:
-            placeholders = ','.join(['?'] * len(task_ids))
+            placeholders = ','.join([f'${i}' for i in range(param_counter, param_counter + len(task_ids))])
             query += f" AND task_id IN ({placeholders})"
             params.extend(task_ids)
+            param_counter += len(task_ids)
         
         if ticker_symbol:
-            query += " AND LOWER(ticker_symbol) = LOWER(?)"
+            query += f" AND LOWER(ticker_symbol) = LOWER(${param_counter})"
             params.append(ticker_symbol)
+            param_counter += 1
         
         if trigger_type:
-            query += " AND trigger_type = ?"
+            query += f" AND trigger_type = ${param_counter}"
             params.append(trigger_type)
+            param_counter += 1
         
         if is_active is not None:
-            query += " AND is_active = ?"
-            params.append(1 if is_active else 0)
+            query += f" AND is_active = ${param_counter}"
+            params.append(is_active)
+            param_counter += 1
         
         query += " ORDER BY created_at"
         
-        cursor.execute(query, params)
-        tasks = [dict(row) for row in cursor.fetchall()]
+        rows = await conn.fetch(query, *params)
+        tasks = [dict(row) for row in rows]
     
     if not tasks:
         return {"error": "No tasks found for the given filters"}
     
+    # Format timestamps and JSONB fields for compatibility
+    for task in tasks:
+        task['created_at'] = format_timestamp(task['created_at'])
+        if task.get('task_datetime'):  # task_datetime can be NULL
+            task['task_datetime'] = format_timestamp(task['task_datetime'])
+        # Convert JSONB back to JSON strings
+        if task.get('trigger_config') and not isinstance(task['trigger_config'], str):
+            task['trigger_config'] = json.dumps(task['trigger_config'])
+        if task.get('related_note_ids') and not isinstance(task['related_note_ids'], str):
+            task['related_note_ids'] = json.dumps(task['related_note_ids'])
+        if task.get('related_task_ids') and not isinstance(task['related_task_ids'], str):
+            task['related_task_ids'] = json.dumps(task['related_task_ids'])
+        if task.get('related_watchlist_ids') and not isinstance(task['related_watchlist_ids'], str):
+            task['related_watchlist_ids'] = json.dumps(task['related_watchlist_ids'])
+    
     return tasks
 
 @function_tool
-def remove_task(
+async def remove_task(
     ctx: RunContextWrapper[Context],
     task_id: str,
     ):
@@ -296,20 +302,19 @@ def remove_task(
     Args:
         task_id (required): The unique UUID of the task to delete. Obtain from get_tasks.
     """
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
+    async with get_async_db_connection() as conn:
         # Check if task exists and belongs to user
-        cursor.execute(
-            "SELECT task_id FROM tasks WHERE task_id = ? AND telegram_user_id = ?",
-            (task_id, ctx.context.user_id)
+        row = await conn.fetchrow(
+            "SELECT task_id FROM tasks WHERE task_id = $1 AND telegram_user_id = $2",
+            task_id, ctx.context.user_id
         )
-        if cursor.fetchone() is None:
+        if row is None:
             return {"error": f"Task with ID {task_id} not found"}
         
         # Delete the task
-        cursor.execute(
-            "DELETE FROM tasks WHERE task_id = ? AND telegram_user_id = ?",
-            (task_id, ctx.context.user_id)
+        await conn.execute(
+            "DELETE FROM tasks WHERE task_id = $1 AND telegram_user_id = $2",
+            task_id, ctx.context.user_id
         )
     
     return f"Task with ID {task_id} deleted successfully"

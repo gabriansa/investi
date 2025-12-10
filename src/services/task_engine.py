@@ -1,13 +1,18 @@
-from datetime import datetime, timezone, timedelta
-import json
 import asyncio
+import json
 import logging
+from datetime import datetime, timedelta, timezone
+
 from dateutil.relativedelta import relativedelta
-from src.api.yahoo_finance import YFinanceAPI
-from src.api.alpaca import AlpacaAPI
-from src.services.database import get_db_connection
-from src.services.user_service import UserService
+
+from langsmith.run_helpers import tracing_context
+
 from src.agent.agent import InvestiAgent
+from src.api.alpaca import AlpacaAPI
+from src.api.yahoo_finance import YFinanceAPI
+from src.services.database import get_async_db_connection
+from src.services.user_service import UserService
+from src.utils import format_timestamp
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +27,7 @@ async def check_tasks(send_message_callback, config: dict):
     user_queues = {}
     queued_task_ids = set()
     
-    async def process_user_tasks(user_id: str, queue: asyncio.Queue):
+    async def process_user_tasks(user_id: int, queue: asyncio.Queue):
         """Process all tasks for a user sequentially, then cleanup."""
         while True:
             try:
@@ -37,24 +42,36 @@ async def check_tasks(send_message_callback, config: dict):
     
     while True:
         try:
-            with get_db_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("""
+            # Only query tasks that are:
+            # 1. Conditional (always need to check)
+            # 2. One-time or recurring with task_datetime <= NOW (due)            
+            async with get_async_db_connection() as conn:
+                active_tasks = await conn.fetch(
+                    """
                     SELECT tasks.*, users.alpaca_api_key, users.alpaca_secret_key, users.openrouter_api_key
                     FROM tasks
                     JOIN users ON tasks.telegram_user_id = users.telegram_user_id
-                    WHERE tasks.is_active = 1
-                """)
-                active_tasks = cursor.fetchall()
+                    WHERE tasks.is_active = TRUE
+                    AND (
+                        tasks.trigger_type = 'conditional'
+                        OR tasks.task_datetime <= $1
+                    )
+                    """,
+                    datetime.now(timezone.utc)
+                )
             
             # Collect and group triggered tasks by user
             triggered_by_user = {}
             for task in active_tasks:
-                triggered = (
-                    _check_one_time_task(task) if task['trigger_type'] == 'one_time' else
-                    _check_recurring_task(task) if task['trigger_type'] == 'recurring' else
-                    _check_conditional_task(task) if task['trigger_type'] == 'conditional' else False
-                )
+                if task['trigger_type'] == 'one_time':
+                    triggered = datetime.now(timezone.utc) >= task['task_datetime']
+                elif task['trigger_type'] == 'recurring':
+                    triggered = datetime.now(timezone.utc) >= task['task_datetime']
+                elif task['trigger_type'] == 'conditional':
+                    triggered = await _check_conditional_task(task)
+                else:
+                    triggered = False
+                    
                 if triggered:
                     user_id = task['telegram_user_id']
                     triggered_by_user.setdefault(user_id, []).append(dict(task))
@@ -74,25 +91,16 @@ async def check_tasks(send_message_callback, config: dict):
         
         await asyncio.sleep(task_check_interval_seconds)
 
-def _check_one_time_task(task) -> bool:
-    """Check if a one-time task should trigger based on datetime."""
-    task_dt = datetime.strptime(task['task_datetime'], "%Y-%m-%d %H:%M:%S UTC").replace(tzinfo=timezone.utc)
-    return datetime.now(timezone.utc) >= task_dt
 
-def _check_recurring_task(task) -> bool:
-    """Check if a recurring task should trigger based on datetime."""
-    task_dt = datetime.strptime(task['task_datetime'], "%Y-%m-%d %H:%M:%S UTC").replace(tzinfo=timezone.utc)
-    return datetime.now(timezone.utc) >= task_dt
-
-def _check_conditional_task(task) -> bool:
+async def _check_conditional_task(task) -> bool:
     """Check if a conditional task's condition is met."""
-    trigger_config = json.loads(task['trigger_config'])
+    trigger_config = task['trigger_config']
     condition_type = trigger_config['type']
     comparison = trigger_config['comparison']
-    threshold = float(trigger_config['threshold'])
+    threshold = trigger_config['threshold']
     ticker = task['ticker_symbol'] if task['ticker_symbol'] else None
     
-    current_value = _get_condition_value(condition_type, ticker, task['telegram_user_id'])
+    current_value = await _get_condition_value(condition_type, ticker, task)
     if current_value is None:
         return False
     
@@ -102,56 +110,72 @@ def _check_conditional_task(task) -> bool:
         return current_value < threshold
     return False
 
-def _get_condition_value(condition_type: str, ticker: str, telegram_user_id: int) -> float | None:
+async def _get_condition_value(condition_type: str, ticker: str, task: dict) -> float | None:
     """Get the current value for a conditional task check."""
     try:
-        user_service = UserService()
-        user, _ = user_service.get_user(telegram_user_id)
-
         alpaca_api = AlpacaAPI(
-            api_key=user['alpaca_api_key'],
-            secret_key=user['alpaca_secret_key']
+            api_key=task['alpaca_api_key'],
+            secret_key=task['alpaca_secret_key']
         )
 
         if condition_type == 'price':
-            success, data = YFinanceAPI().quote(symbol=ticker, interval="1m")
+            success, data = await asyncio.to_thread(YFinanceAPI().quote, symbol=ticker, interval="1m")
             if success:
                 return float(data.get('close', 0))
+            else:
+                logger.warning(f"Failed to get price for {ticker} (task {task['task_id']}, user {task['telegram_user_id']})")
         
         elif condition_type == 'cash':
-            success, data = alpaca_api.get_account()
+            success, data = await asyncio.to_thread(alpaca_api.get_account)
             if success:
                 return float(data.get('cash', 0))
+            else:
+                logger.warning(f"Failed to get cash balance (task {task['task_id']}, user {task['telegram_user_id']}): {data}")
         
         elif condition_type == 'portfolio_value':
-            success, data = alpaca_api.get_account()
+            success, data = await asyncio.to_thread(alpaca_api.get_account)
             if success:
                 return float(data.get('equity', 0))
+            else:
+                logger.warning(f"Failed to get portfolio value (task {task['task_id']}, user {task['telegram_user_id']}): {data}")
         
         elif condition_type == 'position_value':
-            success, data = alpaca_api.get_position_by_symbol(ticker)
+            success, data = await asyncio.to_thread(alpaca_api.get_position_by_symbol, ticker)
             if success:
                 return float(data.get('market_value', 0))
+            else:
+                logger.warning(f"Failed to get position value for {ticker} (task {task['task_id']}, user {task['telegram_user_id']}): {data}")
         
         elif condition_type == 'position_pnl':
-            success, data = alpaca_api.get_position_by_symbol(ticker)
+            success, data = await asyncio.to_thread(alpaca_api.get_position_by_symbol, ticker)
             if success:
                 return float(data.get('unrealized_plpc', 0))
+            else:
+                logger.warning(f"Failed to get position P&L for {ticker} (task {task['task_id']}, user {task['telegram_user_id']}): {data}")
         
         elif condition_type == 'position_allocation':
-            pos_success, pos_data = alpaca_api.get_position_by_symbol(ticker)
-            acc_success, acc_data = alpaca_api.get_account()
+            pos_success, pos_data = await asyncio.to_thread(alpaca_api.get_position_by_symbol, ticker)
+            acc_success, acc_data = await asyncio.to_thread(alpaca_api.get_account)
             if pos_success and acc_success:
                 market_value = float(pos_data.get('market_value', 0))
                 equity = float(acc_data.get('equity', 1))
                 return market_value / equity if equity > 0 else 0
+            else:
+                if not pos_success:
+                    logger.warning(f"Failed to get position for {ticker} (task {task['task_id']}, user {task['telegram_user_id']}): {pos_data}")
+                if not acc_success:
+                    logger.warning(f"Failed to get account data (task {task['task_id']}, user {task['telegram_user_id']}): {acc_data}")
         
         return None
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error checking condition value for task {task.get('task_id', 'unknown')}, user {task.get('telegram_user_id', 'unknown')}: {e}", exc_info=True)
         return None
 
 async def _execute_task(task, send_message_callback, min_credits_to_run: float, queued_task_ids: set, config: dict = None):
-    """Execute a triggered task - notify and run the agent."""
+    """Execute a triggered task - notify and run the agent.
+    
+    Each task execution is wrapped with @traceable to ensure it gets its own isolated trace.
+    """
     task_id = task['task_id']
     ticker = task['ticker_symbol'] if task['ticker_symbol'] else None
     description = task['description']
@@ -168,7 +192,9 @@ async def _execute_task(task, send_message_callback, min_credits_to_run: float, 
 
     # Check credits before running
     user_service = UserService()
-    has_enough_credits, message = user_service.has_enough_credits(task['openrouter_api_key'], min_credits_to_run)
+    has_enough_credits, message = await asyncio.to_thread(
+        user_service.has_enough_credits, task['openrouter_api_key'], min_credits_to_run
+    )
     if not has_enough_credits:
         logger.warning(f"Task {task_id} for user {telegram_user_id} skipped: insufficient credits")
         queued_task_ids.discard(task_id)  # Allow re-queuing next cycle
@@ -177,17 +203,21 @@ async def _execute_task(task, send_message_callback, min_credits_to_run: float, 
     
     await send_message_callback(trigger_message, task['telegram_user_id'])
     
-    # Build context for the agent
-    context_msg = f"Automated Task Triggered\nType: {trigger_type}"
+    # Build context for the agent - only include relevant task fields
+    keep_fields = [
+        'task_id', 'created_at', 'ticker_symbol', 'role', 'description',
+        'task_datetime', 'trigger_type', 'trigger_config', 'related_note_ids',
+        'related_task_ids', 'related_watchlist_ids'
+    ]
+    task_context = {field: task[field] for field in keep_fields if field in task}
     
-    if ticker:
-        context_msg += f"\nTicker: {ticker}"
+    # Custom JSON encoder for datetime objects
+    def datetime_encoder(obj):
+        if isinstance(obj, datetime):
+            return format_timestamp(obj)
+        return str(obj)
     
-    context_msg += f"\nDescription: {description}"
-    
-    if trigger_type == 'conditional':
-        trigger_config = json.loads(task['trigger_config'])
-        context_msg += f"\nCondition Met: {trigger_config['type']} went {trigger_config['comparison']} {trigger_config['threshold']}"
+    context_msg = f"Automated Task Triggered:\n{json.dumps(task_context, indent=2, default=datetime_encoder)}"
 
     agent = InvestiAgent(
         config=config,
@@ -197,31 +227,45 @@ async def _execute_task(task, send_message_callback, min_credits_to_run: float, 
         openrouter_api_key=task['openrouter_api_key'],
     )
 
-    result = await agent.run(context_msg)
+    # Create an isolated trace context for this task to ensure it gets its own separate trace
+    # This prevents multiple tasks from being grouped into a single trace
+    with tracing_context(
+        tags=[
+            "source:automated_task",
+            f"user_id:{telegram_user_id}",
+            f"trigger_type:{trigger_type}",
+            f"ticker:{ticker or 'None'}"
+        ],
+        metadata={
+            "source": "automated_task",
+            "user_id": telegram_user_id,
+            "task_id": task_id,
+            "trigger_type": trigger_type,
+            "ticker": ticker or "None",
+            "description": description
+        }
+    ):
+        result = await agent.run(context_msg)
+    
     await send_message_callback(result, telegram_user_id)
     
     # Mark task completed after successful execution
-    _mark_task_completed(task)
+    await _mark_task_completed(task)
     queued_task_ids.discard(task_id)
     logger.info(f"Task {task_id} completed for user {telegram_user_id}")
 
-def _mark_task_completed(task):
+async def _mark_task_completed(task):
     """Update task in DB after successful execution."""
     task_id = task['task_id']
     trigger_type = task['trigger_type']
     
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        
-        if trigger_type == 'one_time':
-            cursor.execute("UPDATE tasks SET is_active = 0 WHERE task_id = ?", (task_id,))
-        
-        elif trigger_type == 'conditional':
-            cursor.execute("UPDATE tasks SET is_active = 0 WHERE task_id = ?", (task_id,))
+    async with get_async_db_connection() as conn:
+        if trigger_type == 'one_time' or trigger_type == 'conditional':
+            await conn.execute("UPDATE tasks SET is_active = FALSE WHERE task_id = $1", task_id)
         
         elif trigger_type == 'recurring':
-            task_dt = datetime.strptime(task['task_datetime'], "%Y-%m-%d %H:%M:%S UTC").replace(tzinfo=timezone.utc)
-            trigger_config = json.loads(task['trigger_config'])
+            task_dt = task['task_datetime']
+            trigger_config = task['trigger_config']
             
             # Calculate next occurrence
             if trigger_config['type'] == 'day':
@@ -235,15 +279,15 @@ def _mark_task_completed(task):
             
             # Check if recurrence should end
             if trigger_config['end_type'] == 'on':
-                end_dt = datetime.strptime(trigger_config['end_value'], "%Y-%m-%d %H:%M:%S UTC").replace(tzinfo=timezone.utc)
+                end_dt = trigger_config['end_value']
                 if next_dt > end_dt:
-                    cursor.execute("UPDATE tasks SET is_active = 0 WHERE task_id = ?", (task_id,))
+                    await conn.execute("UPDATE tasks SET is_active = FALSE WHERE task_id = $1", task_id)
                 else:
-                    cursor.execute("UPDATE tasks SET task_datetime = ? WHERE task_id = ?", (next_dt.strftime("%Y-%m-%d %H:%M:%S %Z"), task_id))
+                    await conn.execute("UPDATE tasks SET task_datetime = $1 WHERE task_id = $2", next_dt, task_id)
             elif trigger_config['end_type'] == 'after':
-                remaining = int(trigger_config['end_value']) - 1
+                remaining = trigger_config['end_value'] - 1
                 if remaining <= 0:
-                    cursor.execute("UPDATE tasks SET is_active = 0 WHERE task_id = ?", (task_id,))
+                    await conn.execute("UPDATE tasks SET is_active = FALSE WHERE task_id = $1", task_id)
                 else:
                     trigger_config['end_value'] = remaining
-                    cursor.execute("UPDATE tasks SET trigger_config = ?, task_datetime = ? WHERE task_id = ?", (json.dumps(trigger_config), next_dt.strftime("%Y-%m-%d %H:%M:%S %Z"), task_id))
+                    await conn.execute("UPDATE tasks SET trigger_config = $1, task_datetime = $2 WHERE task_id = $3", trigger_config, next_dt, task_id)

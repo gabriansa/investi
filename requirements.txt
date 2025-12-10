@@ -11,3 +11,4 @@ langsmith
 tiktoken
 mplfinance
 telegramify_markdown
+asyncpg

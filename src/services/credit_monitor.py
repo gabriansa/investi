@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from src.api.openrouter import OpenRouterAPI
-from src.services.database import get_db_connection
+from src.services.database import get_async_db_connection
 
 logger = logging.getLogger(__name__)
 
@@ -12,16 +12,14 @@ async def check_credits(send_message_callback, config: dict):
 
     while True:
         try:
-            with get_db_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute(
+            async with get_async_db_connection() as conn:
+                users = await conn.fetch(
                     "SELECT telegram_user_id, openrouter_api_key FROM users WHERE openrouter_api_key IS NOT NULL"
                 )
-                users = cursor.fetchall()
             
             for user in users:
                 openrouter_api = OpenRouterAPI(user['openrouter_api_key'])
-                success, response = openrouter_api.get_remaining_credits()
+                success, response = await asyncio.to_thread(openrouter_api.get_remaining_credits)
                 if success:
                     remaining = response.get('remaining_credits', 0)
                     if remaining < min_credits_warning:

@@ -1,6 +1,7 @@
 from typing import Literal
 from agents import RunContextWrapper, function_tool
 from src.agent.context import Context
+from src.utils import format_api_timestamps
 from pydantic import BaseModel
 
 
@@ -72,6 +73,8 @@ def create_order(
     )
 
     if success:
+        # Format timestamp fields to our standard format
+        format_api_timestamps(response)
         return response
     else:
         return {"error": response['message']}
@@ -101,6 +104,8 @@ def get_orders(
     if not success:
         return {"error": response['message']}
     
+    # Format timestamp fields in all orders
+    format_api_timestamps(response)
     return response
 
 @function_tool

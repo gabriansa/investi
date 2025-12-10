@@ -6,6 +6,7 @@ from telegram.ext import ContextTypes
 from src.agent import InvestiAgent
 from src.services.user_service import UserService
 from src.utils import send_markdown_message
+from langsmith.run_helpers import tracing_context
 
 logger = logging.getLogger(__name__)
 
@@ -24,15 +25,41 @@ async def _process_message(update: Update, context: ContextTypes.DEFAULT_TYPE, c
     telegram_user_id = update.effective_user.id
     username = update.effective_user.username or update.effective_user.first_name or "Unknown"
     
+    # Check if user is awaiting operating framework input
+    if context.user_data.get('awaiting_operating_framework'):
+        logger.info(f"User {telegram_user_id} submitting operating framework")
+        
+        # Validate format: all non-empty lines must start with "- "
+        lines = [line.strip() for line in text.strip().split('\n') if line.strip()]
+        if not lines or not all(line.startswith('- ') for line in lines):
+            error_message = (
+                "Wrong format. Please use this format:\n\n"
+                "- principle one\n"
+                "- principle two\n"
+                "- principle three\n\n"
+                "Send `/empty` to keep it empty."
+            )
+            await send_markdown_message(context.bot, update.effective_chat.id, error_message)
+            return
+        
+        # Format is valid, save the framework
+        context.user_data['awaiting_operating_framework'] = False
+        _, message = await user_service.set_operating_framework(telegram_user_id, text.strip())
+        logger.info(f"User {telegram_user_id} successfully set operating framework")
+        await send_markdown_message(context.bot, update.effective_chat.id, message)
+        return
+    
     logger.info(f"User request from {username} (ID: {telegram_user_id}): {text[:100]}{'...' if len(text) > 100 else ''}")
     
-    user, message = user_service.get_user(telegram_user_id)
+    user, message = await user_service.get_user(telegram_user_id)
     if user is None:
         logger.warning(f"User {telegram_user_id} not found in database")
         await send_markdown_message(context.bot, update.effective_chat.id, message)
         return
     
-    has_enough_credits, message = user_service.has_enough_credits(user['openrouter_api_key'], min_credits_to_run)
+    has_enough_credits, message = await asyncio.to_thread(
+        user_service.has_enough_credits, user['openrouter_api_key'], min_credits_to_run
+    )
     if not has_enough_credits:
         logger.warning(f"User {telegram_user_id} has insufficient credits")
         await send_markdown_message(context.bot, update.effective_chat.id, message)
@@ -48,7 +75,23 @@ async def _process_message(update: Update, context: ContextTypes.DEFAULT_TYPE, c
         alpaca_api_key=user['alpaca_api_key'],
         alpaca_secret_key=user['alpaca_secret_key']
     )
-    result = await agent.run(text)
+    
+    # Create an isolated trace context for this user message to ensure it gets its own separate trace
+    # This prevents multiple user messages from being grouped into a single trace
+    with tracing_context(
+        project_name=None,  # Use default project
+        tags=[
+            "source:user_message",
+            f"user_id:{telegram_user_id}",
+        ],
+        metadata={
+            "source": "user_message",
+            "user_id": telegram_user_id,
+            "message_preview": text[:100] + ('...' if len(text) > 100 else ''),
+            "message_length": len(text)
+        }
+    ):
+        result = await agent.run(text)
     
     logger.info(f"Completed request for user {telegram_user_id}")
 

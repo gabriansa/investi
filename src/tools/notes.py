@@ -6,9 +6,9 @@ from datetime import datetime, timezone
 from typing import Literal
 from agents import RunContextWrapper, function_tool
 from src.agent.context import Context
-from src.services.database import get_db_connection
+from src.services.database import get_async_db_connection
 from src.tools.types import TOPICS, TopicLiteral, RoleLiteral
-from src.utils import validate_date, validate_date_range
+from src.utils import validate_date, validate_date_range, format_timestamp
 
 
 def cosine_similarity(vec1: list[float], vec2: list[float]) -> float:
@@ -28,7 +28,7 @@ def create_embedding(client, note_text: str, embedding_model: str) -> list[float
 
 
 @function_tool
-def create_note(
+async def create_note(
     ctx: RunContextWrapper[Context],
     note: str,
     topic: TopicLiteral,
@@ -52,44 +52,41 @@ def create_note(
     """
 
     note_id = str(uuid.uuid4())
-    created_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S %Z")
+    created_at = datetime.now(timezone.utc)
     
     # Generate embedding for the note
     embedding = create_embedding(ctx.context.client, note, ctx.context.embedding_model)
     embedding_blob = pickle.dumps(embedding)
     
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
+    async with get_async_db_connection() as conn:
+        await conn.execute(
             """INSERT INTO notes (
                 note_id, telegram_user_id, created_at, ticker_symbol, topic, role, note,
                 related_note_ids, related_task_ids, related_watchlist_ids
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                note_id,
-                ctx.context.user_id,
-                created_at,
-                ticker_symbol,
-                topic,
-                role,
-                note,
-                json.dumps(related_note_ids) if related_note_ids else None,
-                json.dumps(related_task_ids) if related_task_ids else None,
-                json.dumps(related_watchlist_ids) if related_watchlist_ids else None,
-            )
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)""",
+            note_id,
+            ctx.context.user_id,
+            created_at,
+            ticker_symbol,
+            topic,
+            role,
+            note,
+            json.dumps(related_note_ids) if related_note_ids else None,
+            json.dumps(related_task_ids) if related_task_ids else None,
+            json.dumps(related_watchlist_ids) if related_watchlist_ids else None,
         )
         
         # Store the embedding
-        cursor.execute(
+        await conn.execute(
             """INSERT INTO note_embeddings (note_id, embedding)
-               VALUES (?, ?)""",
-            (note_id, embedding_blob)
+               VALUES ($1, $2)""",
+            note_id, embedding_blob
         )
 
     return f"Note with ID {note_id} added successfully"
 
 @function_tool
-def search_notes(
+async def search_notes(
     ctx: RunContextWrapper[Context],
     search_query: str | None,
     ticker_symbols: list[str] | None = None,
@@ -118,12 +115,12 @@ def search_notes(
     
     # Validate individual dates
     if start_date:
-        success, start_dt = validate_date(start_date, output_format="%Y-%m-%d %H:%M:%S %Z")
+        success, start_dt = validate_date(start_date)
         if not success:
             return {"error": f"Invalid start_date format. Use YYYY-MM-DD format (e.g., '2024-01-01'). Provided: {start_date}"}
     
     if end_date:
-        success, end_dt = validate_date(end_date, output_format="%Y-%m-%d %H:%M:%S %Z")
+        success, end_dt = validate_date(end_date)
         if not success:
             return {"error": f"Invalid end_date format. Use YYYY-MM-DD format (e.g., '2024-12-31'). Provided: {end_date}"}
     
@@ -136,44 +133,57 @@ def search_notes(
     # Build common filter conditions
     filter_conditions = []
     filter_params = []
+    param_counter = 2  # Start at 2 since $1 is user_id
     
     if ticker_symbols:
-        placeholders = ','.join(['?'] * len(ticker_symbols))
+        placeholders = ','.join([f'${i}' for i in range(param_counter, param_counter + len(ticker_symbols))])
         filter_conditions.append(f"LOWER(ticker_symbol) IN ({placeholders})")
         filter_params.extend([s.lower() for s in ticker_symbols])
+        param_counter += len(ticker_symbols)
     
     if topics:
-        placeholders = ','.join(['?'] * len(topics))
+        placeholders = ','.join([f'${i}' for i in range(param_counter, param_counter + len(topics))])
         filter_conditions.append(f"UPPER(topic) IN ({placeholders})")
         filter_params.extend([t.upper() for t in topics])
+        param_counter += len(topics)
     
     if start_date:
-        filter_conditions.append("created_at >= ?")
+        filter_conditions.append(f"created_at >= ${param_counter}")
         filter_params.append(start_dt)
+        param_counter += 1
     
     if end_date:
-        filter_conditions.append("created_at < ?")
+        filter_conditions.append(f"created_at < ${param_counter}")
         filter_params.append(end_dt)
+        param_counter += 1
     
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        
+    async with get_async_db_connection() as conn:
         # PATH 1: No search query - simple filter-based retrieval ordered by date
         if not search_query:
-            query = "SELECT * FROM notes WHERE telegram_user_id = ?"
+            query = "SELECT * FROM notes WHERE telegram_user_id = $1"
             params = [ctx.context.user_id] + filter_params
             
             if filter_conditions:
                 query += " AND " + " AND ".join(filter_conditions)
             
-            query += " ORDER BY created_at DESC LIMIT ?"
+            query += f" ORDER BY created_at DESC LIMIT ${param_counter}"
             params.append(limit)
             
-            cursor.execute(query, params)
-            results = [dict(row) for row in cursor.fetchall()]
+            rows = await conn.fetch(query, *params)
+            results = [dict(row) for row in rows]
             
             if not results:
                 return {"error": "No notes found for the given filters"}
+            
+            # Format timestamps and JSONB
+            for note in results:
+                note['created_at'] = format_timestamp(note['created_at'])
+                if note.get('related_note_ids') and not isinstance(note['related_note_ids'], str):
+                    note['related_note_ids'] = json.dumps(note['related_note_ids'])
+                if note.get('related_task_ids') and not isinstance(note['related_task_ids'], str):
+                    note['related_task_ids'] = json.dumps(note['related_task_ids'])
+                if note.get('related_watchlist_ids') and not isinstance(note['related_watchlist_ids'], str):
+                    note['related_watchlist_ids'] = json.dumps(note['related_watchlist_ids'])
             
             return results
         
@@ -187,7 +197,7 @@ def search_notes(
                 SELECT n.*, ne.embedding
                 FROM notes n
                 JOIN note_embeddings ne ON n.note_id = ne.note_id
-                WHERE n.telegram_user_id = ?
+                WHERE n.telegram_user_id = $1
             """
             params = [ctx.context.user_id] + filter_params
             
@@ -202,8 +212,7 @@ def search_notes(
             # Limit to 500 for performance
             query += " LIMIT 500"
             
-            cursor.execute(query, params)
-            rows = cursor.fetchall()
+            rows = await conn.fetch(query, *params)
             
             if not rows:
                 return {"error": "No notes found matching the search query and filters"}
@@ -223,7 +232,7 @@ def search_notes(
                 
                 # Calculate recency score (0-1 scale, exponential decay)
                 # Notes from today = 1.0, notes from 30 days ago ≈ 0.5, older = lower
-                created_at = datetime.strptime(note_dict['created_at'], "%Y-%m-%d %H:%M:%S %Z").replace(tzinfo=timezone.utc)
+                created_at = note_dict['created_at']  # Already a datetime object from database
                 days_old = (now - created_at).total_seconds() / 86400
                 recency_score = np.exp(-days_old / 30.0)  # 30-day half-life
                 
@@ -244,11 +253,21 @@ def search_notes(
             
             # Apply limit
             all_results = all_results[:limit]
+            
+            # Format timestamps and JSONB
+            for note in all_results:
+                note['created_at'] = format_timestamp(note['created_at'])
+                if note.get('related_note_ids') and not isinstance(note['related_note_ids'], str):
+                    note['related_note_ids'] = json.dumps(note['related_note_ids'])
+                if note.get('related_task_ids') and not isinstance(note['related_task_ids'], str):
+                    note['related_task_ids'] = json.dumps(note['related_task_ids'])
+                if note.get('related_watchlist_ids') and not isinstance(note['related_watchlist_ids'], str):
+                    note['related_watchlist_ids'] = json.dumps(note['related_watchlist_ids'])
 
             return all_results
 
 @function_tool
-def get_related_notes(
+async def get_related_notes(
     ctx: RunContextWrapper[Context],
     note_ids: list[str],
     limit: int | None,
@@ -261,48 +280,55 @@ def get_related_notes(
         note_ids (required): List of note IDs to start from.
         limit (optional): Maximum number of results to return. Omit to return all related notes.
     """
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        
+    async with get_async_db_connection() as conn:
         all_note_ids = set()
         
-        def collect_related_ids(ids_to_process):
+        async def collect_related_ids(ids_to_process):
             for note_id in ids_to_process:
                 if note_id in all_note_ids:
                     continue
                 all_note_ids.add(note_id)
                 
                 # Get this note's related_note_ids
-                cursor.execute(
-                    "SELECT related_note_ids FROM notes WHERE telegram_user_id = ? AND note_id = ?",
-                    [ctx.context.user_id, note_id]
+                row = await conn.fetchrow(
+                    "SELECT related_note_ids FROM notes WHERE telegram_user_id = $1 AND note_id = $2",
+                    ctx.context.user_id, note_id
                 )
-                row = cursor.fetchone()
                 if row and row['related_note_ids']:
                     try:
-                        related_ids = json.loads(row['related_note_ids']) if isinstance(row['related_note_ids'], str) else row['related_note_ids']
+                        related_ids = row['related_note_ids'] if isinstance(row['related_note_ids'], list) else json.loads(row['related_note_ids'])
                         if related_ids:
-                            collect_related_ids(related_ids)
+                            await collect_related_ids(related_ids)
                     except (json.JSONDecodeError, TypeError):
                         pass
         
         # Start collection from provided note_ids
-        collect_related_ids(note_ids)
+        await collect_related_ids(note_ids)
         
         if not all_note_ids:
             return {"error": "No related notes found"}
         
         # Get all collected notes ordered by date (newest first)
-        placeholders = ','.join(['?'] * len(all_note_ids))
-        query = f"SELECT * FROM notes WHERE telegram_user_id = ? AND note_id IN ({placeholders}) ORDER BY created_at DESC"
+        placeholders = ','.join([f'${i+2}' for i in range(len(all_note_ids))])
+        query = f"SELECT * FROM notes WHERE telegram_user_id = $1 AND note_id IN ({placeholders}) ORDER BY created_at DESC"
         
         if limit:
             query += f" LIMIT {limit}"
         
-        cursor.execute(query, [ctx.context.user_id] + list(all_note_ids))
-        results = [dict(row) for row in cursor.fetchall()]
+        rows = await conn.fetch(query, ctx.context.user_id, *list(all_note_ids))
+        results = [dict(row) for row in rows]
         
         if not results:
             return {"error": "No related notes found"}
+        
+        # Format timestamps and JSONB
+        for note in results:
+            note['created_at'] = format_timestamp(note['created_at'])
+            if note.get('related_note_ids') and not isinstance(note['related_note_ids'], str):
+                note['related_note_ids'] = json.dumps(note['related_note_ids'])
+            if note.get('related_task_ids') and not isinstance(note['related_task_ids'], str):
+                note['related_task_ids'] = json.dumps(note['related_task_ids'])
+            if note.get('related_watchlist_ids') and not isinstance(note['related_watchlist_ids'], str):
+                note['related_watchlist_ids'] = json.dumps(note['related_watchlist_ids'])
         
         return results

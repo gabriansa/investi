@@ -1,7 +1,7 @@
 from typing import Literal
 from agents import RunContextWrapper, function_tool
 from src.agent.context import Context
-from src.utils import validate_date
+from src.utils import convert_date_format
 from src.tools import load_prompt
 
 
@@ -32,12 +32,12 @@ def search_sec_filings(
         search_context_size (optional): Search depth - "low", "medium" (default), "high".
     """
 
-    # Validate date formats
-    success, search_after_date_str = validate_date(search_after_date, input_format="%Y-%m-%d", output_format="%m/%d/%Y")
+    # Convert date formats for SEC API
+    success, search_after_date_str = convert_date_format(search_after_date, input_format="%Y-%m-%d", output_format="%m/%d/%Y")
     if not success:
         return {"error": f"search_after_date must be in the format YYYY-MM-DD (e.g., '2023-01-01'). Provided: {search_after_date}"}
-    
-    success, search_before_date_str = validate_date(search_before_date, input_format="%Y-%m-%d", output_format="%m/%d/%Y")
+
+    success, search_before_date_str = convert_date_format(search_before_date, input_format="%Y-%m-%d", output_format="%m/%d/%Y")
     if not success:
         return {"error": f"search_before_date must be in the format YYYY-MM-DD (e.g., '2023-01-01'). Provided: {search_before_date}"}
         
@@ -105,12 +105,12 @@ def search_web(
         search_domain_filter (optional): "standard" (news sites) or "social" (Reddit, Twitter, StockTwits).
     """
     
-    # Validate date formats
-    success, search_after_date_str = validate_date(search_after_date, input_format="%Y-%m-%d", output_format="%m/%d/%Y")
+    # Convert date formats for web search API
+    success, search_after_date_str = convert_date_format(search_after_date, input_format="%Y-%m-%d", output_format="%m/%d/%Y")
     if not success:
         return {"error": f"search_after_date must be in the format YYYY-MM-DD (e.g., '2025-01-01'). Provided: {search_after_date}"}
-    
-    success, search_before_date_str = validate_date(search_before_date, input_format="%Y-%m-%d", output_format="%m/%d/%Y")
+
+    success, search_before_date_str = convert_date_format(search_before_date, input_format="%Y-%m-%d", output_format="%m/%d/%Y")
     if not success:
         return {"error": f"search_before_date must be in the format YYYY-MM-DD (e.g., '2025-12-31'). Provided: {search_before_date}"}
     

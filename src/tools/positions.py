@@ -1,5 +1,6 @@
 from agents import RunContextWrapper, function_tool
 from src.agent.context import Context
+from src.utils import format_api_timestamps
 
 
 @function_tool
@@ -18,7 +19,9 @@ def get_positions(
         success, response = ctx.context.alpaca_api.get_all_positions()
         if not success:
             return {"error": response['message']}
-                
+        
+        # Format timestamp fields in all positions
+        format_api_timestamps(response)
         return response
     else:
         results = []
@@ -30,6 +33,7 @@ def get_positions(
                     "error": response['message']
                 })
             else:
+                format_api_timestamps(response)
                 results.append(response)
         
         return results
@@ -59,4 +63,6 @@ def close_position(
     if not success:
         return {"error": response['message']}
     
+    # Format timestamp fields (close_position returns order data)
+    format_api_timestamps(response)
     return response

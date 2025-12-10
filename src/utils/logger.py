@@ -2,6 +2,7 @@ import logging
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from src.utils.dates import format_timestamp
 
 
 class UTCFormatter(logging.Formatter):
@@ -11,7 +12,7 @@ class UTCFormatter(logging.Formatter):
         dt = datetime.fromtimestamp(record.created, tz=timezone.utc)
         if datefmt:
             return dt.strftime(datefmt)
-        return dt.strftime('%Y-%m-%d %H:%M:%S UTC')
+        return format_timestamp(dt)
 
 
 def setup_logger():
@@ -30,7 +31,7 @@ def setup_logger():
     # UTC formatter
     formatter = UTCFormatter(
         fmt='%(asctime)s [%(levelname)s] %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S UTC'
+        datefmt='%Y-%m-%d %H:%M:%S %Z'
     )
     
     # File handler for general logs

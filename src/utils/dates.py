@@ -1,23 +1,24 @@
 from datetime import datetime, timezone
+from dateutil import parser as dateutil_parser
 
 
 def validate_date(
     date_str,
     input_format="%Y-%m-%d",
-    output_format="%Y-%m-%d",
     tz=timezone.utc,
     check_future=False
-) -> tuple[bool, str | None]:
+) -> tuple[bool, datetime | None]:
     """
-    Validates a date string format and converts it to another format if specified.
+    Validates a date string and returns a datetime object.
     
     Args:
         date_str: Date string to validate (can be None)
         input_format: Format to parse from (e.g., "%Y-%m-%d"). Defaults to "%Y-%m-%d".
-        output_format: Format to convert to (e.g., "%m/%d/%Y" or "%Y-%m-%d %H:%M:%S %Z"). Defaults to "%Y-%m-%d".
-                      If format includes %Z or %z, the specified timezone will be applied.
-        tz: Timezone to apply when output format includes timezone specifiers. Defaults to UTC.
+        tz: Timezone to apply to the datetime object. Defaults to UTC.
         check_future: If True, validates that the date is in the future. Defaults to False.
+    
+    Returns:
+        Tuple of (is_valid, datetime_object | None)
     """
     try:
         if date_str is None:
@@ -31,10 +32,8 @@ def validate_date(
         
         dt = datetime.strptime(date_str, input_format)
         
-        # Add timezone if output format includes timezone specifiers or if checking future
-        if output_format and ('%Z' in output_format or '%z' in output_format):
-            dt = dt.replace(tzinfo=tz)
-        elif check_future and dt.tzinfo is None:
+        # Always apply timezone for consistency
+        if dt.tzinfo is None:
             dt = dt.replace(tzinfo=tz)
         
         # Check if date is in the future if required
@@ -43,9 +42,119 @@ def validate_date(
             if dt < now:
                 return False, None
         
-        if output_format:
-            return True, dt.strftime(output_format)
-        return True, dt.strftime()
+        return True, dt
+    except:
+        return False, None
+
+
+def format_timestamp(dt: datetime, tz: timezone = timezone.utc) -> str:
+    """
+    Format a datetime object to the standard display format.
+    
+    Args:
+        dt: datetime object to format (naive or aware)
+        tz: timezone to apply if dt is naive (defaults to UTC)
+    
+    Returns:
+        Formatted string in format: YYYY-MM-DD HH:MM:SS TZ
+    """
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=tz)
+    return dt.strftime("%Y-%m-%d %H:%M:%S %Z")
+
+
+def parse_and_format_timestamp(timestamp_str: str | None, tz: timezone = timezone.utc) -> str | None:
+    """
+    Parse any common timestamp format and convert to our standard format.
+    Handles ISO 8601, RFC 3339, and many other common formats.
+    
+    Args:
+        timestamp_str: Timestamp string in any common format (can be None)
+        tz: Timezone to apply if timestamp is naive (defaults to UTC)
+    
+    Returns:
+        Formatted string in format: YYYY-MM-DD HH:MM:SS TZ, or None if parsing fails
+    
+    Examples:
+        >>> parse_and_format_timestamp("2024-01-15T14:30:00.123456Z")
+        "2024-01-15 14:30:00 UTC"
+        
+        >>> parse_and_format_timestamp("2024-01-15 14:30:00")
+        "2024-01-15 14:30:00 UTC"
+        
+        >>> parse_and_format_timestamp("Jan 15, 2024 2:30 PM")
+        "2024-01-15 14:30:00 UTC"
+    """
+    if timestamp_str is None:
+        return None
+    
+    try:
+        # Use dateutil parser which handles many formats intelligently
+        dt = dateutil_parser.parse(timestamp_str)
+        
+        # Apply timezone if naive
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=tz)
+        
+        return format_timestamp(dt)
+    except:
+        return None
+
+
+def format_api_timestamps(data, timestamp_fields: list[str] | None = None):
+    """
+    Format timestamp fields in API response data from any format to our standard format.
+    Handles both dict and list responses. Modifies data in-place.
+    
+    Args:
+        data: Dict or list containing timestamp fields
+        timestamp_fields: List of field names to format. If None, uses common API fields.
+    
+    Examples:
+        >>> order = {"created_at": "2024-01-15T14:30:00Z", "price": "100.00"}
+        >>> format_api_timestamps(order)
+        >>> order["created_at"]
+        "2024-01-15 14:30:00 UTC"
+    """
+    if timestamp_fields is None:
+        # Default common timestamp fields from various APIs
+        timestamp_fields = [
+            'created_at', 'updated_at', 'submitted_at', 'filled_at', 
+            'expired_at', 'canceled_at', 'timestamp', 'datetime',
+            'last_updated', 'modified_at'
+        ]
+    
+    if isinstance(data, dict):
+        for field in timestamp_fields:
+            if field in data and data[field]:
+                formatted = parse_and_format_timestamp(data[field])
+                if formatted:
+                    data[field] = formatted
+    elif isinstance(data, list):
+        for item in data:
+            format_api_timestamps(item, timestamp_fields)
+
+
+def convert_date_format(
+    date_str: str,
+    input_format: str = "%Y-%m-%d",
+    output_format: str = "%m/%d/%Y"
+) -> tuple[bool, str | None]:
+    """
+    Convert date string from one format to another.
+    Used for API integrations that require specific date formats.
+    
+    Args:
+        date_str: Date string to convert
+        input_format: Format to parse from (e.g., "%Y-%m-%d")
+        output_format: Format to convert to (e.g., "%m/%d/%Y")
+    
+    Returns:
+        Tuple of (success, converted_string | None)
+    """
+    try:
+        dt = datetime.strptime(date_str, input_format)
+        return True, dt.strftime(output_format)
     except:
         return False, None
 

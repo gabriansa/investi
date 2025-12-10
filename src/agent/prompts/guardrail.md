@@ -19,4 +19,3 @@ Check if the user input is relevant to portfolio management, investing, or tradi
 - Technical support unrelated to the platform
 
 Set `is_portfolio_relevant` to `True` if the input is relevant, `False` otherwise.
-

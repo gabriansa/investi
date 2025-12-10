@@ -12,12 +12,24 @@ git clone https://github.com/gabriansa/investi.git
 cd investi
 ```
 
-### 2. Install Dependencies
+### 2. Set Up PostgreSQL
+
+**For Raspberry Pi deployment:**
+Follow the detailed setup guide: **[RASPBERRY_PI_POSTGRES_SETUP.md](RASPBERRY_PI_POSTGRES_SETUP.md)**
+
+**For local development (Mac):**
+```bash
+brew install postgresql@15
+brew services start postgresql@15
+createdb investi
+```
+
+### 3. Install Dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. Set Up Environment Variables
+### 4. Set Up Environment Variables
 
 Create a `.env` file in the root directory with the following:
 
@@ -31,8 +43,8 @@ LANGSMITH_PROJECT=investi
 # OpenAI API Key (needed for LangSmith tracing)
 OPENAI_API_KEY=your_openai_api_key
 
-# Database (local SQLite database)
-DATABASE_PATH=data/investi.db
+# Database (PostgreSQL)
+DATABASE_URL=postgresql:///investi
 
 # OpenRouter API
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
@@ -41,10 +53,30 @@ OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token
 ```
 
-### 4. Run the Bot
+### 5. Run the Bot
 ```bash
 python main.py
 ```
+
+## Database Management
+
+The bot uses PostgreSQL for data persistence. Several management scripts are available:
+
+```bash
+# Pull logs from Raspberry Pi
+./scripts/pull-prod.sh
+
+# Backup PostgreSQL database from Pi
+./scripts/backup-db.sh
+
+# Restore database from backup
+./scripts/restore-db.sh <backup_file>
+
+# Delete/reset database (WARNING: destructive!)
+./scripts/delete-db.sh
+```
+
+For complete database management documentation, see **[DATABASE_MANAGEMENT.md](DATABASE_MANAGEMENT.md)**
 
 ## API Keys Setup
 
@@ -63,7 +95,9 @@ To use Investi, you'll need to get API keys from a few services:
 
 ## Notes
 
-- The project uses a local SQLite database by default. If you want to change this, you'll need to modify the database configuration.
+- The project uses PostgreSQL for production. See [RASPBERRY_PI_POSTGRES_SETUP.md](RASPBERRY_PI_POSTGRES_SETUP.md) for setup instructions.
+- PostgreSQL on the Pi automatically starts on boot and runs in the background.
+- Use the database management scripts in `scripts/` to backup, restore, and manage your database.
 - You can run this 24/7 on a server, Raspberry Pi, or any machine with Python.
 - Get your Telegram bot token by creating a bot with [@BotFather](https://t.me/botfather) on Telegram.
 
@@ -72,9 +106,12 @@ To use Investi, you'll need to get API keys from a few services:
 Once running, you can use these commands in Telegram:
 
 - `/start` - Register and get started
+- `/status` - Check account and portfolio status
+- `/tasks` - See upcoming scheduled tasks
+- `/alerts` - See active conditional alerts
+- `/watchlists` - See all watchlists
 - `/set_alpaca` - Set your Alpaca API credentials
 - `/set_openrouter` - Set your OpenRouter API key
-- `/status` - Check account and portfolio status
 - `/delete_account` - Delete your account and data
 
 ## Disclaimer

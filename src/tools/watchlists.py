@@ -4,11 +4,12 @@ from typing import Literal
 from datetime import datetime, timezone
 import json
 import uuid
-from src.services.database import get_db_connection
+from src.services.database import get_async_db_connection
+from src.utils import format_timestamp
 
 
 @function_tool
-def get_watchlist(
+async def get_watchlist(
     ctx: RunContextWrapper[Context],
     watchlist_id: str,
     ):
@@ -19,25 +20,24 @@ def get_watchlist(
     Args:
         watchlist_id (required): Watchlist ID to filter by.
     """
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT * FROM watchlists WHERE watchlist_id = ? AND telegram_user_id = ?",
-            (watchlist_id, ctx.context.user_id)
+    async with get_async_db_connection() as conn:
+        row = await conn.fetchrow(
+            "SELECT * FROM watchlists WHERE watchlist_id = $1 AND telegram_user_id = $2",
+            watchlist_id, ctx.context.user_id
         )
-        row = cursor.fetchone()
         
         if row is None:
             return {"error": f"Watchlist with ID {watchlist_id} not found."}
         
         watchlist = dict(row)
-        assets = json.loads(watchlist['assets']) if watchlist['assets'] else []
+        # assets is already a list from JSONB
+        assets = watchlist['assets'] if isinstance(watchlist['assets'], list) else []
     
-    # Build result dict
+    # Build result dict - format timestamps
     result = {
         "watchlist_name": watchlist['watchlist_name'],
-        "created_at": watchlist['created_at'],
-        "updated_at": watchlist['updated_at'],
+        "created_at": format_timestamp(watchlist['created_at']),
+        "updated_at": format_timestamp(watchlist['updated_at']),
         "assets": []
     }
     
@@ -56,7 +56,7 @@ def get_watchlist(
     return result
 
 @function_tool
-def create_watchlist(
+async def create_watchlist(
     ctx: RunContextWrapper[Context],
     watchlist_name: str,
     ):
@@ -66,38 +66,35 @@ def create_watchlist(
     Args:
         watchlist_name (required): Name for the new watchlist.
     """
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
+    async with get_async_db_connection() as conn:
         # Check if watchlist already exists for this user
-        cursor.execute(
-            "SELECT watchlist_id FROM watchlists WHERE telegram_user_id = ? AND LOWER(watchlist_name) = LOWER(?)",
-            (ctx.context.user_id, watchlist_name)
+        row = await conn.fetchrow(
+            "SELECT watchlist_id FROM watchlists WHERE telegram_user_id = $1 AND LOWER(watchlist_name) = LOWER($2)",
+            ctx.context.user_id, watchlist_name
         )
-        if cursor.fetchone() is not None:
+        if row is not None:
             return {"error": f"Watchlist '{watchlist_name}' already exists."}
 
         watchlist_id = str(uuid.uuid4())
-        created_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S %Z")
+        created_at = datetime.now(timezone.utc)
         updated_at = created_at
         
-        cursor.execute(
+        await conn.execute(
             """INSERT INTO watchlists (
                 watchlist_id, telegram_user_id, created_at, watchlist_name, assets, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?)""",
-            (
-                watchlist_id,
-                ctx.context.user_id,
-                created_at,
-                watchlist_name,
-                json.dumps([]),
-                updated_at,
-            )
+            ) VALUES ($1, $2, $3, $4, $5, $6)""",
+            watchlist_id,
+            ctx.context.user_id,
+            created_at,
+            watchlist_name,
+            json.dumps([]),  # Will be stored as JSONB
+            updated_at,
         )
 
     return f"Watchlist with ID {watchlist_id} ({watchlist_name}) created successfully"
 
 @function_tool
-def remove_watchlist(
+async def remove_watchlist(
     ctx: RunContextWrapper[Context],
     watchlist_id: str,
     ):
@@ -107,26 +104,25 @@ def remove_watchlist(
     Args:
         watchlist_id (required): Watchlist ID to delete.
     """
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
+    async with get_async_db_connection() as conn:
         # Check if watchlist exists and belongs to user
-        cursor.execute(
-            "SELECT watchlist_id FROM watchlists WHERE watchlist_id = ? AND telegram_user_id = ?",
-            (watchlist_id, ctx.context.user_id)
+        row = await conn.fetchrow(
+            "SELECT watchlist_id FROM watchlists WHERE watchlist_id = $1 AND telegram_user_id = $2",
+            watchlist_id, ctx.context.user_id
         )
-        if cursor.fetchone() is None:
+        if row is None:
             return {"error": f"Watchlist with ID {watchlist_id} not found."}
         
         # Delete the watchlist
-        cursor.execute(
-            "DELETE FROM watchlists WHERE watchlist_id = ? AND telegram_user_id = ?",
-            (watchlist_id, ctx.context.user_id)
+        await conn.execute(
+            "DELETE FROM watchlists WHERE watchlist_id = $1 AND telegram_user_id = $2",
+            watchlist_id, ctx.context.user_id
         )
 
     return f"Watchlist with ID {watchlist_id} deleted successfully."
 
 @function_tool
-def modify_watchlist_symbols(
+async def modify_watchlist_symbols(
     ctx: RunContextWrapper[Context],
     watchlist_id: str,
     ticker_symbol: str,
@@ -140,18 +136,17 @@ def modify_watchlist_symbols(
         ticker_symbol (required): Stock ticker or crypto symbol (e.g., "AAPL", "BTC-USD").
         action (required): Either "add" to add the symbol or "remove" to remove it.
     """ 
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT assets FROM watchlists WHERE watchlist_id = ? AND telegram_user_id = ?",
-            (watchlist_id, ctx.context.user_id)
+    async with get_async_db_connection() as conn:
+        row = await conn.fetchrow(
+            "SELECT assets FROM watchlists WHERE watchlist_id = $1 AND telegram_user_id = $2",
+            watchlist_id, ctx.context.user_id
         )
-        row = cursor.fetchone()
         
         if row is None:
             return {"error": f"Watchlist with ID {watchlist_id} not found."}
 
-        current_assets = json.loads(row['assets']) if row['assets'] else []
+        # assets is already a list from JSONB
+        current_assets = row['assets'] if isinstance(row['assets'], list) else []
         symbol_upper = ticker_symbol.upper()
         
         if action == "add":
@@ -165,10 +160,10 @@ def modify_watchlist_symbols(
             current_assets.remove(symbol_upper)
             message = f"Removed {symbol_upper} from watchlist with ID {watchlist_id}."
         
-        updated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S %Z")
-        cursor.execute(
-            "UPDATE watchlists SET assets = ?, updated_at = ? WHERE watchlist_id = ? AND telegram_user_id = ?",
-            (json.dumps(current_assets), updated_at, watchlist_id, ctx.context.user_id)
+        updated_at = datetime.now(timezone.utc)
+        await conn.execute(
+            "UPDATE watchlists SET assets = $1, updated_at = $2 WHERE watchlist_id = $3 AND telegram_user_id = $4",
+            json.dumps(current_assets), updated_at, watchlist_id, ctx.context.user_id
         )
     
     return message

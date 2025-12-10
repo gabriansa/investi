@@ -54,6 +54,7 @@ class InvestiAgent:
         self.openrouter_api_key = openrouter_api_key
         self.alpaca_api_key = alpaca_api_key
         self.alpaca_secret_key = alpaca_secret_key
+        self.user_id = user_id
         
         self.cached_client = enable_caching(
             AsyncOpenAI(base_url=os.getenv("OPENROUTER_BASE_URL"), api_key=self.openrouter_api_key)
@@ -71,9 +72,7 @@ class InvestiAgent:
             screener_finder_model=self.screener_finder_model
         )
 
-        self._build_agents()
-
-    def _build_agents(self):
+    async def _build_agents(self):
         # Create guardrail function
         self.portfolio_guardrail = create_portfolio_guardrail(
             instructions=get_guardrail_prompt(),
@@ -95,7 +94,7 @@ class InvestiAgent:
         # Analyst Agent
         self.analyst = Agent[Context](
             name="analyst",
-            instructions=get_analyst_prompt(self.context.user_id),
+            instructions=await get_analyst_prompt(self.user_id),
             tools=[
                 get_current_market_quote, find_screeners, execute_screener, search_for_symbols, get_company_profile,
                 create_note, search_notes, get_related_notes,
@@ -105,7 +104,7 @@ class InvestiAgent:
                 write_todos,
                 self.technical_analyst.as_tool(
                     tool_name="technical_analysis",
-                    tool_description="Use this tool to analyze the technical indicators of a stock or crypto asset.",
+                    tool_description="Analyzes price action, technical indicators, chart patterns, and provides probabilistic timing signals with key support/resistance levels.",
                     max_turns=self.technical_analyst_max_turns
                 ),
                 ],
@@ -115,7 +114,7 @@ class InvestiAgent:
         # Trader Agent
         self.trader = Agent[Context](
             name="trader",
-            instructions=get_trader_prompt(self.context.user_id),
+            instructions=await get_trader_prompt(self.user_id),
             tools=[
                 create_note, search_notes, get_related_notes,
                 create_order, get_orders, cancel_orders,
@@ -131,7 +130,7 @@ class InvestiAgent:
         # Portfolio Manager Agent
         self.portfolio_manager = Agent[Context](
             name="portfolio_manager",
-            instructions=get_portfolio_manager_prompt(self.context.user_id),
+            instructions=await get_portfolio_manager_prompt(self.user_id),
             tools=[
                 find_screeners, execute_screener,
                 get_current_market_quote,
@@ -144,12 +143,12 @@ class InvestiAgent:
                 write_todos,
                 self.analyst.as_tool(
                     tool_name="analyst",
-                    tool_description="Use this tool to analyze a stock or crypto asset.",
+                    tool_description="Conducts deep fundamental research, business analysis, competitive positioning, valuation modeling, and produces evidence-backed investment recommendations.",
                     max_turns=self.analyst_max_turns
                 ),
                 self.trader.as_tool(
                     tool_name="trader",
-                    tool_description="Use this tool to place orders for stocks and crypto assets.",
+                    tool_description="Executes buy/sell orders, manages positions and order lifecycle, monitors fills and execution quality for stocks and crypto.",
                     max_turns=self.trader_max_turns
                 ),
             ],
@@ -158,6 +157,9 @@ class InvestiAgent:
         )
 
     async def run(self, input: str) -> str:
+        # Build agents with fresh data (account, positions, orders, etc.)
+        await self._build_agents()
+        
         try:
             result = await Runner.run(
                 starting_agent=self.portfolio_manager,

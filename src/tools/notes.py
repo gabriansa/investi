@@ -103,7 +103,7 @@ async def search_notes(
     Args:
         search_query (optional): Semantic search query to find relevant notes by meaning. Can be combined with other filters.
         ticker_symbols (optional): List of stock/crypto symbols to filter by (e.g., ["AAPL", "MSFT", "BTC/USD"]).
-        topics (optional): List of topic categories to filter by (e.g., ["RISK_FACTORS", "ALLOCATION"]).
+        topics (optional): List of topic categories to filter by.
         start_date (optional): Filter notes on or after this date in YYYY-MM-DD format. If provided, must be before end_date.
         end_date (optional): Filter notes on or before this date in YYYY-MM-DD format. If provided, must be after start_date. If None, shows all notes until today.
         limit (optional): Maximum number of results to return (default: 10).

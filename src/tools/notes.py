@@ -71,9 +71,9 @@ async def create_note(
             topic,
             role,
             note,
-            related_note_ids,
-            related_task_ids,
-            related_watchlist_ids,
+            json.dumps(related_note_ids) if related_note_ids else '[]',
+            json.dumps(related_task_ids) if related_task_ids else '[]',
+            json.dumps(related_watchlist_ids) if related_watchlist_ids else '[]',
         )
         
         # Store the embedding
@@ -285,12 +285,10 @@ async def get_related_notes(
                     ctx.context.user_id, note_id
                 )
                 if row and row['related_note_ids']:
-                    try:
-                        related_ids = row['related_note_ids'] if isinstance(row['related_note_ids'], list) else json.loads(row['related_note_ids'])
-                        if related_ids:
-                            await collect_related_ids(related_ids)
-                    except (json.JSONDecodeError, TypeError):
-                        pass
+                    # asyncpg automatically deserializes JSONB to Python list
+                    related_ids = row['related_note_ids']
+                    if related_ids:
+                        await collect_related_ids(related_ids)
         
         # Start collection from provided note_ids
         await collect_related_ids(note_ids)

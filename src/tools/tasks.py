@@ -60,9 +60,9 @@ async def set_one_time_task(
             True,  # is_active
             "one_time",
             None,  # trigger_config
-            related_note_ids,
-            related_task_ids,
-            related_watchlist_ids,
+            json.dumps(related_note_ids) if related_note_ids else '[]',
+            json.dumps(related_task_ids) if related_task_ids else '[]',
+            json.dumps(related_watchlist_ids) if related_watchlist_ids else '[]',
         )
 
     return f"One-time task with ID {task_id} created"
@@ -146,10 +146,10 @@ async def set_recurring_task(
             task_dt,
             True,  # is_active
             "recurring",
-            trigger_config,
-            related_note_ids,
-            related_task_ids,
-            related_watchlist_ids,
+            json.dumps(trigger_config),
+            json.dumps(related_note_ids) if related_note_ids else '[]',
+            json.dumps(related_task_ids) if related_task_ids else '[]',
+            json.dumps(related_watchlist_ids) if related_watchlist_ids else '[]',
         )
     
     return f"Recurring task with ID {task_id} created"
@@ -210,10 +210,10 @@ async def set_conditional_task(
             None,  # task_datetime is NULL for conditional tasks
             True,  # is_active
             "conditional",
-            trigger_config,
-            related_note_ids,
-            related_task_ids,
-            related_watchlist_ids,
+            json.dumps(trigger_config),
+            json.dumps(related_note_ids) if related_note_ids else '[]',
+            json.dumps(related_task_ids) if related_task_ids else '[]',
+            json.dumps(related_watchlist_ids) if related_watchlist_ids else '[]',
         )
     
     return f"Conditional task with ID {task_id} created"

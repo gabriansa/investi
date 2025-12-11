@@ -12,7 +12,12 @@ git clone https://github.com/gabriansa/investi.git
 cd investi
 ```
 
-### 2. Set Up PostgreSQL
+### 2. Install Dependencies
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Set Up PostgreSQL
 
 ```bash
 # Install PostgreSQL
@@ -21,11 +26,6 @@ brew services start postgresql@15
 
 # Create database
 createdb investi
-```
-
-### 3. Install Dependencies
-```bash
-pip install -r requirements.txt
 ```
 
 ### 4. Set Up Environment Variables

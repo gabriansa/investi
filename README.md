@@ -94,3 +94,4 @@ Once running, you can use these commands in Telegram:
 ## Disclaimer
 
 This software is for educational purposes only and does not constitute financial advice. Use at your own risk—the creators assume no liability for any losses incurred.
+

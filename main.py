@@ -170,10 +170,11 @@ async def run_bot():
     stop_event = asyncio.Event()
     
     def signal_handler(signum, frame):
-        logger.info("Received shutdown signal (Ctrl+C)")
+        logger.info(f"Received shutdown signal ({signum})")
         stop_event.set()
     
     signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
     
     await stop_event.wait()
     

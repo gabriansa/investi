@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import signal
 
 import yaml
 from dotenv import load_dotenv
@@ -73,6 +74,56 @@ async def post_init(application: Application):
         config=config
     ))
     logger.info("Credit monitoring started")
+    
+    # Broadcast startup message to all users
+    try:
+        from src.services.database import get_async_db_connection
+        async with get_async_db_connection() as conn:
+            user_ids = await conn.fetch("SELECT telegram_user_id FROM users")
+        
+        if user_ids:
+            logger.info(f"Broadcasting startup message to {len(user_ids)} users")
+            
+            async def send_startup(user_id):
+                try:
+                    await send_markdown_message(
+                        application.bot, 
+                        user_id, 
+                        "**Investi is back online**"
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to notify user {user_id}: {e}")
+            
+            # Send all messages in parallel
+            await asyncio.gather(*[send_startup(row['telegram_user_id']) for row in user_ids])
+    except Exception as e:
+        logger.error(f"Error broadcasting startup: {e}")
+
+
+async def broadcast_shutdown(application: Application):
+    """Broadcast shutdown message to all users."""
+    try:
+        from src.services.database import get_async_db_connection
+        async with get_async_db_connection() as conn:
+            user_ids = await conn.fetch("SELECT telegram_user_id FROM users")
+        
+        if user_ids:
+            logger.info(f"Broadcasting shutdown message to {len(user_ids)} users")
+            
+            async def send_shutdown(user_id):
+                try:
+                    await send_markdown_message(
+                        application.bot, 
+                        user_id, 
+                        "**Investi is shutting down for maintenance purposes**\nTry again in a moment. You will be notified when it's back online."
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to notify user {user_id}: {e}")
+            
+            # Send all messages in parallel
+            await asyncio.gather(*[send_shutdown(row['telegram_user_id']) for row in user_ids])
+    except Exception as e:
+        logger.error(f"Error broadcasting shutdown: {e}")
 
 
 async def post_shutdown(application: Application):
@@ -81,9 +132,8 @@ async def post_shutdown(application: Application):
     await close_pool()
 
 
-if __name__ == "__main__":
-    logger.info("Starting bot...")
-    
+async def run_bot():
+    """Run the bot with graceful shutdown."""
     # Configure request with longer timeouts for better reliability
     request = HTTPXRequest(
         connection_pool_size=8,
@@ -108,12 +158,36 @@ if __name__ == "__main__":
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, lambda update, context: handle_message(update, context, config)))
     app.add_error_handler(error_handler)
     
-    # Initialize background tasks after bot starts
-    app.post_init = lambda app: post_init(app)
+    # Initialize and run
+    await app.initialize()
+    await post_init(app)
+    await app.start()
+    await app.updater.start_polling(poll_interval=2, drop_pending_updates=True)
     
-    # Cleanup on shutdown
-    app.post_shutdown = lambda app: post_shutdown(app)
-
-    # Run bot
     logger.info("Bot is running and polling for messages")
-    app.run_polling(poll_interval=2, close_loop=False, drop_pending_updates=True)
+    
+    # Wait for stop signal
+    stop_event = asyncio.Event()
+    
+    def signal_handler(signum, frame):
+        logger.info("Received shutdown signal (Ctrl+C)")
+        stop_event.set()
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    
+    await stop_event.wait()
+    
+    # Broadcast shutdown before stopping
+    await broadcast_shutdown(app)
+    
+    # Stop bot
+    await app.updater.stop()
+    await app.stop()
+    await post_shutdown(app)
+    await app.shutdown()
+    logger.info("Bot stopped")
+
+
+if __name__ == "__main__":
+    logger.info("Starting bot...")
+    asyncio.run(run_bot())

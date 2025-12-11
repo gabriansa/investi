@@ -126,4 +126,3 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle errors."""
     logger.error(f"Update {update} caused error: {context.error}")
     logger.error(traceback.format_exc())
-

@@ -71,9 +71,9 @@ async def create_note(
             topic,
             role,
             note,
-            json.dumps(related_note_ids) if related_note_ids else None,
-            json.dumps(related_task_ids) if related_task_ids else None,
-            json.dumps(related_watchlist_ids) if related_watchlist_ids else None,
+            related_note_ids,
+            related_task_ids,
+            related_watchlist_ids,
         )
         
         # Store the embedding
@@ -175,15 +175,10 @@ async def search_notes(
             if not results:
                 return {"error": "No notes found for the given filters"}
             
-            # Format timestamps and JSONB
+            # Format timestamps
             for note in results:
                 note['created_at'] = format_timestamp(note['created_at'])
-                if note.get('related_note_ids') and not isinstance(note['related_note_ids'], str):
-                    note['related_note_ids'] = json.dumps(note['related_note_ids'])
-                if note.get('related_task_ids') and not isinstance(note['related_task_ids'], str):
-                    note['related_task_ids'] = json.dumps(note['related_task_ids'])
-                if note.get('related_watchlist_ids') and not isinstance(note['related_watchlist_ids'], str):
-                    note['related_watchlist_ids'] = json.dumps(note['related_watchlist_ids'])
+                # JSONB fields (related_*_ids) are already lists from asyncpg
             
             return results
         
@@ -257,12 +252,7 @@ async def search_notes(
             # Format timestamps and JSONB
             for note in all_results:
                 note['created_at'] = format_timestamp(note['created_at'])
-                if note.get('related_note_ids') and not isinstance(note['related_note_ids'], str):
-                    note['related_note_ids'] = json.dumps(note['related_note_ids'])
-                if note.get('related_task_ids') and not isinstance(note['related_task_ids'], str):
-                    note['related_task_ids'] = json.dumps(note['related_task_ids'])
-                if note.get('related_watchlist_ids') and not isinstance(note['related_watchlist_ids'], str):
-                    note['related_watchlist_ids'] = json.dumps(note['related_watchlist_ids'])
+                # JSONB fields (related_*_ids) are already lists from asyncpg
 
             return all_results
 
@@ -324,11 +314,6 @@ async def get_related_notes(
         # Format timestamps and JSONB
         for note in results:
             note['created_at'] = format_timestamp(note['created_at'])
-            if note.get('related_note_ids') and not isinstance(note['related_note_ids'], str):
-                note['related_note_ids'] = json.dumps(note['related_note_ids'])
-            if note.get('related_task_ids') and not isinstance(note['related_task_ids'], str):
-                note['related_task_ids'] = json.dumps(note['related_task_ids'])
-            if note.get('related_watchlist_ids') and not isinstance(note['related_watchlist_ids'], str):
-                note['related_watchlist_ids'] = json.dumps(note['related_watchlist_ids'])
+            # JSONB fields (related_*_ids) are already lists from asyncpg
         
         return results

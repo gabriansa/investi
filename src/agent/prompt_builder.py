@@ -159,16 +159,8 @@ async def get_upcoming_tasks(user_id: int):
     if not active_tasks:
         return "No upcoming tasks"
     
-    # Convert JSONB fields back to JSON strings for compatibility
+    # Format timestamps - JSONB fields are already dicts/lists from asyncpg
     for task in active_tasks:
-        if task.get('trigger_config') and not isinstance(task['trigger_config'], str):
-            task['trigger_config'] = json.dumps(task['trigger_config'])
-        if task.get('related_note_ids') and not isinstance(task['related_note_ids'], str):
-            task['related_note_ids'] = json.dumps(task['related_note_ids'])
-        if task.get('related_task_ids') and not isinstance(task['related_task_ids'], str):
-            task['related_task_ids'] = json.dumps(task['related_task_ids'])
-        if task.get('related_watchlist_ids') and not isinstance(task['related_watchlist_ids'], str):
-            task['related_watchlist_ids'] = json.dumps(task['related_watchlist_ids'])
         task['created_at'] = format_timestamp(task['created_at'])
         if task.get('task_datetime'):  # task_datetime can be NULL
             task['task_datetime'] = format_timestamp(task['task_datetime'])

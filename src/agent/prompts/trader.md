@@ -112,9 +112,9 @@ Monitoring and closing positions.
 ## Created Artifacts
 
 **Notes Created:**
-- [Ticker] / [Topic]: Brief description of what was documented and why it matters
+- [Note ID] /[Ticker] / [Topic]: Brief description of what was documented and why it matters
 
 **Tasks Created:**
-- [Ticker] / [Type]: When this triggers and what action it prompts
+- [Task ID] / [Ticker] / [Type]: When this triggers and what action it prompts
 ```
 </output_description>

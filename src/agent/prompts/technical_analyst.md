@@ -65,12 +65,12 @@ You can call multiple tools in a single step whenever possible. Use exact functi
 ## Created Artifacts
 
 **Notes Created:**
-- [Ticker] / [Topic]: Brief description of what was documented and why it matters
+- [Note ID] /[Ticker] / [Topic]: Brief description of what was documented and why it matters
 
 **Tasks Created:**
-- [Ticker] / [Type]: When this triggers and what action it prompts
+- [Task ID] / [Ticker] / [Type]: When this triggers and what action it prompts
 
 **Watchlists Modified:**
-- [Watchlist Name]: Symbols added/removed and rationale
+- [Watchlist ID] / [Watchlist Name]: Symbols added/removed and rationale
 ```
 </output_description>

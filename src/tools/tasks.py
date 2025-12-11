@@ -60,9 +60,9 @@ async def set_one_time_task(
             True,  # is_active
             "one_time",
             None,  # trigger_config
-            json.dumps(related_note_ids) if related_note_ids else None,
-            json.dumps(related_task_ids) if related_task_ids else None,
-            json.dumps(related_watchlist_ids) if related_watchlist_ids else None,
+            related_note_ids,
+            related_task_ids,
+            related_watchlist_ids,
         )
 
     return f"One-time task with ID {task_id} created"
@@ -146,10 +146,10 @@ async def set_recurring_task(
             task_dt,
             True,  # is_active
             "recurring",
-            json.dumps(trigger_config),
-            json.dumps(related_note_ids) if related_note_ids else None,
-            json.dumps(related_task_ids) if related_task_ids else None,
-            json.dumps(related_watchlist_ids) if related_watchlist_ids else None,
+            trigger_config,
+            related_note_ids,
+            related_task_ids,
+            related_watchlist_ids,
         )
     
     return f"Recurring task with ID {task_id} created"
@@ -210,10 +210,10 @@ async def set_conditional_task(
             None,  # task_datetime is NULL for conditional tasks
             True,  # is_active
             "conditional",
-            json.dumps(trigger_config),
-            json.dumps(related_note_ids) if related_note_ids else None,
-            json.dumps(related_task_ids) if related_task_ids else None,
-            json.dumps(related_watchlist_ids) if related_watchlist_ids else None,
+            trigger_config,
+            related_note_ids,
+            related_task_ids,
+            related_watchlist_ids,
         )
     
     return f"Conditional task with ID {task_id} created"
@@ -274,20 +274,12 @@ async def get_tasks(
     if not tasks:
         return {"error": "No tasks found for the given filters"}
     
-    # Format timestamps and JSONB fields for compatibility
+    # Format timestamps
     for task in tasks:
         task['created_at'] = format_timestamp(task['created_at'])
         if task.get('task_datetime'):  # task_datetime can be NULL
             task['task_datetime'] = format_timestamp(task['task_datetime'])
-        # Convert JSONB back to JSON strings
-        if task.get('trigger_config') and not isinstance(task['trigger_config'], str):
-            task['trigger_config'] = json.dumps(task['trigger_config'])
-        if task.get('related_note_ids') and not isinstance(task['related_note_ids'], str):
-            task['related_note_ids'] = json.dumps(task['related_note_ids'])
-        if task.get('related_task_ids') and not isinstance(task['related_task_ids'], str):
-            task['related_task_ids'] = json.dumps(task['related_task_ids'])
-        if task.get('related_watchlist_ids') and not isinstance(task['related_watchlist_ids'], str):
-            task['related_watchlist_ids'] = json.dumps(task['related_watchlist_ids'])
+        # JSONB fields (trigger_config, related_*_ids) are already dicts/lists from asyncpg
     
     return tasks
 

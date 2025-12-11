@@ -87,7 +87,7 @@ async def create_watchlist(
             ctx.context.user_id,
             created_at,
             watchlist_name,
-            json.dumps([]),  # Empty list for JSONB column
+            [],  # Empty list for JSONB column
             updated_at,
         )
 
@@ -163,7 +163,7 @@ async def modify_watchlist_symbols(
         updated_at = datetime.now(timezone.utc)
         await conn.execute(
             "UPDATE watchlists SET assets = $1, updated_at = $2 WHERE watchlist_id = $3 AND telegram_user_id = $4",
-            json.dumps(current_assets), updated_at, watchlist_id, ctx.context.user_id
+            current_assets, updated_at, watchlist_id, ctx.context.user_id
         )
     
     return message

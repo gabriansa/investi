@@ -1,4 +1,5 @@
 import os
+import json
 import logging
 import asyncpg
 from contextlib import asynccontextmanager
@@ -12,6 +13,15 @@ DATABASE_URL = os.getenv('DATABASE_URL')
 # Connection pool for async operations (shared across the application)
 _pool = None
 
+async def init_connection(conn):
+    """Initialize connection with JSONB codec for automatic serialization/deserialization."""
+    await conn.set_type_codec(
+        'jsonb',
+        encoder=json.dumps,
+        decoder=json.loads,
+        schema='pg_catalog'
+    )
+
 async def get_pool():
     """Get or create the connection pool for async operations."""
     global _pool
@@ -20,7 +30,8 @@ async def get_pool():
             DATABASE_URL,
             min_size=2,
             max_size=10,
-            command_timeout=30.0
+            command_timeout=30.0,
+            init=init_connection
         )
     return _pool
 

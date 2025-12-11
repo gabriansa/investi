@@ -71,9 +71,9 @@ async def create_note(
             topic,
             role,
             note,
-            json.dumps(related_note_ids) if related_note_ids else '[]',
-            json.dumps(related_task_ids) if related_task_ids else '[]',
-            json.dumps(related_watchlist_ids) if related_watchlist_ids else '[]',
+            related_note_ids if related_note_ids else [],
+            related_task_ids if related_task_ids else [],
+            related_watchlist_ids if related_watchlist_ids else [],
         )
         
         # Store the embedding

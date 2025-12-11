@@ -291,3 +291,5 @@ async def _mark_task_completed(task):
                 else:
                     trigger_config['end_value'] = remaining
                     await conn.execute("UPDATE tasks SET trigger_config = $1, task_datetime = $2 WHERE task_id = $3", trigger_config, next_dt, task_id)
+            else:  # end_type == 'never'
+                await conn.execute("UPDATE tasks SET task_datetime = $1 WHERE task_id = $2", next_dt, task_id)

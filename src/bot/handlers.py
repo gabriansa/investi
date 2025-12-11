@@ -104,7 +104,6 @@ async def _process_message(update: Update, context: ContextTypes.DEFAULT_TYPE, c
     # Create an isolated trace context for this user message to ensure it gets its own separate trace
     # This prevents multiple user messages from being grouped into a single trace
     with tracing_context(
-        project_name=None,  # Use default project
         tags=[
             "source:user_message",
             f"user_id:{telegram_user_id}",

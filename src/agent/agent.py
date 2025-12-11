@@ -4,6 +4,8 @@ from openai import AsyncOpenAI, OpenAI
 from src.agent.prompt_builder import get_analyst_prompt, get_portfolio_manager_prompt, get_trader_prompt, get_guardrail_prompt, get_technical_analyst_prompt
 from src.agent.caching import enable_caching
 from src.agent.guardrails import create_portfolio_guardrail
+from langsmith import traceable
+from langsmith.wrappers import wrap_openai
 
 import os
 from dotenv import load_dotenv
@@ -57,12 +59,12 @@ class InvestiAgent:
         self.user_id = user_id
         
         self.cached_client = enable_caching(
-            AsyncOpenAI(base_url=os.getenv("OPENROUTER_BASE_URL"), api_key=self.openrouter_api_key)
+            wrap_openai(AsyncOpenAI(base_url=os.getenv("OPENROUTER_BASE_URL"), api_key=self.openrouter_api_key))
         )
 
         # Context
         self.context = Context(
-            client=OpenAI(base_url=os.getenv("OPENROUTER_BASE_URL"), api_key=self.openrouter_api_key),
+            client=wrap_openai(OpenAI(base_url=os.getenv("OPENROUTER_BASE_URL"), api_key=self.openrouter_api_key)),
             todos=[],
             yfinance_api=YFinanceAPI(),
             alpaca_api=AlpacaAPI(api_key=self.alpaca_api_key,secret_key=self.alpaca_secret_key),
@@ -156,6 +158,7 @@ class InvestiAgent:
             input_guardrails=[self.portfolio_guardrail]
         )
 
+    @traceable(name="Investi Agent")
     async def run(self, input: str) -> str:
         # Build agents with fresh data (account, positions, orders, etc.)
         await self._build_agents()

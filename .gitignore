@@ -60,6 +60,7 @@ htmlcov/
 tmp/
 temp/
 *.tmp
+.active_users.json
 
 # Miscellaneous
 docs/

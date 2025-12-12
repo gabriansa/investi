@@ -5,7 +5,6 @@ from datetime import datetime, timedelta, timezone
 
 from dateutil.relativedelta import relativedelta
 
-from langsmith.run_helpers import tracing_context
 
 from src.agent.agent import InvestiAgent
 from src.api.alpaca import AlpacaAPI
@@ -227,25 +226,7 @@ async def _execute_task(task, send_message_callback, min_credits_to_run: float, 
         openrouter_api_key=task['openrouter_api_key'],
     )
 
-    # Create an isolated trace context for this task to ensure it gets its own separate trace
-    # This prevents multiple tasks from being grouped into a single trace
-    with tracing_context(
-        tags=[
-            "source:automated_task",
-            f"user_id:{telegram_user_id}",
-            f"trigger_type:{trigger_type}",
-            f"ticker:{ticker or 'None'}"
-        ],
-        metadata={
-            "source": "automated_task",
-            "user_id": telegram_user_id,
-            "task_id": task_id,
-            "trigger_type": trigger_type,
-            "ticker": ticker or "None",
-            "description": description
-        }
-    ):
-        result = await agent.run(context_msg)
+    result = await agent.run(context_msg, session_id=f"task_{task_id}")
     
     await send_message_callback(result, telegram_user_id)
     

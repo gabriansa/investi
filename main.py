@@ -10,7 +10,8 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from telegram.request import HTTPXRequest
 
 from agents import set_trace_processors
-from langsmith.wrappers import OpenAIAgentsTracingProcessor
+from langsmith.integrations.openai_agents_sdk import OpenAIAgentsTracingProcessor
+
 
 from src.bot.commands import (
     start_command,

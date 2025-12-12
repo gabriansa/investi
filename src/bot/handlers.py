@@ -6,7 +6,6 @@ from telegram.ext import ContextTypes
 from src.agent import InvestiAgent
 from src.services.user_service import UserService
 from src.utils import send_markdown_message
-from langsmith.run_helpers import tracing_context
 
 logger = logging.getLogger(__name__)
 
@@ -101,21 +100,7 @@ async def _process_message(update: Update, context: ContextTypes.DEFAULT_TYPE, c
         alpaca_secret_key=user['alpaca_secret_key']
     )
     
-    # Create an isolated trace context for this user message to ensure it gets its own separate trace
-    # This prevents multiple user messages from being grouped into a single trace
-    with tracing_context(
-        tags=[
-            "source:user_message",
-            f"user_id:{telegram_user_id}",
-        ],
-        metadata={
-            "source": "user_message",
-            "user_id": telegram_user_id,
-            "message_preview": text[:100] + ('...' if len(text) > 100 else ''),
-            "message_length": len(text)
-        }
-    ):
-        result = await agent.run(text)
+    result = await agent.run(text)
     
     logger.info(f"Completed request for user {telegram_user_id}")
 

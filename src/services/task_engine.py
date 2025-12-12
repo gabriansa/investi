@@ -226,7 +226,7 @@ async def _execute_task(task, send_message_callback, min_credits_to_run: float, 
         openrouter_api_key=task['openrouter_api_key'],
     )
 
-    result = await agent.run(context_msg, session_id=f"task_{task_id}")
+    result = await agent.run(context_msg)
     
     await send_message_callback(result, telegram_user_id)
     

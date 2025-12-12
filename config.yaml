@@ -18,7 +18,7 @@ embeddings:
   model_name: "openai/text-embedding-3-large"
 
 tools:
-  web_search_model: "perplexity/sonar-pro"
+  web_search_model: "perplexity/sonar-pro-search"
   screener_finder_model: "openai/gpt-4o-mini"
 
 credits:

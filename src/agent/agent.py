@@ -1,6 +1,6 @@
 from src.agent.context import Context
 from agents import Agent, Runner, OpenAIChatCompletionsModel, InputGuardrailTripwireTriggered
-from openai import AsyncOpenAI, OpenAI
+from openai import AsyncOpenAI
 from src.agent.prompt_builder import get_analyst_prompt, get_portfolio_manager_prompt, get_trader_prompt, get_guardrail_prompt, get_technical_analyst_prompt
 from src.agent.caching import enable_caching
 from src.agent.guardrails import create_portfolio_guardrail
@@ -56,13 +56,12 @@ class InvestiAgent:
         self.alpaca_secret_key = alpaca_secret_key
         self.user_id = user_id
         
-        self.cached_client = enable_caching(
-            AsyncOpenAI(base_url=os.getenv("OPENROUTER_BASE_URL"), api_key=self.openrouter_api_key)
-        )
+        self.client = AsyncOpenAI(base_url=os.getenv("OPENROUTER_BASE_URL"), api_key=self.openrouter_api_key)
+        self.cached_client = enable_caching(self.client)
 
         # Context
         self.context = Context(
-            client=OpenAI(base_url=os.getenv("OPENROUTER_BASE_URL"), api_key=self.openrouter_api_key),
+            client=self.client,
             todos=[],
             yfinance_api=YFinanceAPI(),
             alpaca_api=AlpacaAPI(api_key=self.alpaca_api_key,secret_key=self.alpaca_secret_key),

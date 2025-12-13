@@ -6,7 +6,7 @@ from src.tools import load_prompt
 
 
 @function_tool
-def search_sec_filings(
+async def search_sec_filings(
     ctx: RunContextWrapper[Context],
     search_query: str,
     filing_types: list[str] | None = None,
@@ -62,7 +62,7 @@ def search_sec_filings(
         if search_recency_filter:
             extra_body["search_recency_filter"] = search_recency_filter
             
-        completion = ctx.context.client.chat.completions.create(
+        completion = await ctx.context.client.chat.completions.create(
             model=ctx.context.web_search_model,
             messages=[
                 {
@@ -81,7 +81,7 @@ def search_sec_filings(
         return {"error": f"Error searching SEC filings: {str(e)}"}
 
 @function_tool
-def search_web(
+async def search_web(
     ctx: RunContextWrapper[Context],
     search_query: str,
     search_after_date: str | None = None,
@@ -143,7 +143,7 @@ def search_web(
         
     try:
         # Make the request
-        completion = ctx.context.client.chat.completions.create(
+        completion = await ctx.context.client.chat.completions.create(
             model=ctx.context.web_search_model,
             messages=[
                 {

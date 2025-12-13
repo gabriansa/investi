@@ -1,12 +1,12 @@
 from dataclasses import dataclass
-from openai import OpenAI
+from openai import AsyncOpenAI
 from src.api.alpaca import AlpacaAPI
 from src.api.yahoo_finance import YFinanceAPI
 
 
 @dataclass
 class Context:
-    client: OpenAI
+    client: AsyncOpenAI
     alpaca_api: AlpacaAPI
     yfinance_api: YFinanceAPI
     todos: list

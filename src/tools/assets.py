@@ -69,7 +69,7 @@ def get_current_market_quote(
         return {"error": data}
 
 @function_tool
-def find_screeners(
+async def find_screeners(
     ctx: RunContextWrapper[Context],
     search_query: str,
     ):
@@ -97,7 +97,7 @@ def find_screeners(
     system_prompt = load_prompt("find_screeners.md").format(available_screeners=available_screeners_str)
 
     try:
-        completion = ctx.context.client.chat.completions.parse(
+        completion = await ctx.context.client.chat.completions.parse(
             model=ctx.context.screener_finder_model,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -116,8 +116,6 @@ def find_screeners(
     except Exception as e:
         return {"error": f"Failed to search for screeners: {str(e)}"}
     
-
-
 @function_tool
 def execute_screener(
     ctx: RunContextWrapper[Context],

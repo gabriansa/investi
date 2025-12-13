@@ -18,9 +18,9 @@ def cosine_similarity(vec1: list[float], vec2: list[float]) -> float:
     return np.dot(vec1_arr, vec2_arr) / (np.linalg.norm(vec1_arr) * np.linalg.norm(vec2_arr))
 
 
-def create_embedding(client, note_text: str, embedding_model: str) -> list[float]:
+async def create_embedding(client, note_text: str, embedding_model: str) -> list[float]:
     """Generate an embedding for a note using the configured embedding model."""
-    response = client.embeddings.create(
+    response = await client.embeddings.create(
         model=embedding_model,
         input=note_text
     )
@@ -55,7 +55,7 @@ async def create_note(
     created_at = datetime.now(timezone.utc)
     
     # Generate embedding for the note
-    embedding = create_embedding(ctx.context.client, note, ctx.context.embedding_model)
+    embedding = await create_embedding(ctx.context.client, note, ctx.context.embedding_model)
     embedding_blob = pickle.dumps(embedding)
     
     async with get_async_db_connection() as conn:
@@ -185,7 +185,7 @@ async def search_notes(
         # PATH 2: With search query - semantic search with smart ranking
         else:
             # Generate embedding for search query
-            query_embedding = create_embedding(ctx.context.client, search_query, ctx.context.embedding_model)
+            query_embedding = await create_embedding(ctx.context.client, search_query, ctx.context.embedding_model)
             
             # Build query with filters
             query = """

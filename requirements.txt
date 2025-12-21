@@ -16,3 +16,4 @@ exchange_calendars
 aiohttp
 openai-agents[sqlalchemy]
 psycopg2
+greenlet

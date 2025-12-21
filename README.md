@@ -1,6 +1,6 @@
 # Investi
 
-<video src="cover.mp4" poster="cover.png" autoplay loop muted playsinline></video>
+![Investi Demo](cover.png)
 
 An autonomous AI financial analyst and trader that runs on Telegram.
 

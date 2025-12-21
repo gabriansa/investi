@@ -19,13 +19,37 @@ def cosine_similarity(vec1: list[float], vec2: list[float]) -> float:
 
 
 async def create_embedding(client, note_text: str, embedding_model: str) -> list[float]:
-    """Generate an embedding for a note using the configured embedding model."""
+    """Generate an embedding for a note using the configured embedding model.
+    For long notes, chunks them and returns the averaged embedding."""
     try:
+        # text-embedding-3-large has 8191 token limit (~30k chars)
+        max_chars = 30000
+        
+        # If note fits in one chunk, embed directly
+        if len(note_text) <= max_chars:
+            response = await client.embeddings.create(
+                model=embedding_model,
+                input=note_text
+            )
+            if not response.data or len(response.data) == 0:
+                raise ValueError("No embedding data received")
+            return response.data[0].embedding
+        
+        # For long notes: chunk and average embeddings
+        chunks = [note_text[i:i+max_chars] for i in range(0, len(note_text), max_chars)]
         response = await client.embeddings.create(
             model=embedding_model,
-            input=note_text
+            input=chunks
         )
-        return response.data[0].embedding
+        
+        if not response.data or len(response.data) == 0:
+            raise ValueError("No embedding data received")
+        
+        # Average all chunk embeddings
+        embeddings = [item.embedding for item in response.data]
+        avg_embedding = np.mean(embeddings, axis=0).tolist()
+        return avg_embedding
+        
     except Exception as e:
         raise ValueError(f"Failed to create embedding: {str(e)}")
 

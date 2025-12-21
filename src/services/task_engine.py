@@ -14,6 +14,26 @@ from src.utils import format_timestamp
 
 logger = logging.getLogger(__name__)
 
+# Track first failure time for each ticker/task to detect persistent issues
+_failure_tracking = {}  # (ticker, task_id, type) -> first_failure_timestamp
+
+
+def _track_failure(ticker: str, task_id: str, failure_type: str, user_id: int):
+    """Track a failure and log if it's been failing for >10 minutes."""
+    key = (ticker, task_id, failure_type)
+    now = datetime.now(timezone.utc)
+    
+    if key not in _failure_tracking:
+        # First failure - just track it, don't log
+        _failure_tracking[key] = now
+    else:
+        # Check if it's been failing for >10 minutes
+        first_failure = _failure_tracking[key]
+        if (now - first_failure).seconds >= 600:  # 10 minutes
+            logger.warning(f"Persistent failure (>10min) getting {failure_type} for {ticker} (task {task_id}, user {user_id})")
+            # Reset tracking so we don't spam logs - will warn again if still failing in another 10min
+            _failure_tracking[key] = now
+
 
 async def check_tasks(send_message_callback, config: dict):
     """
@@ -118,10 +138,14 @@ async def _get_condition_value(condition_type: str, ticker: str, task: dict) -> 
 
         if condition_type == 'price':
             success, data = await asyncio.to_thread(YFinanceAPI().quote, symbol=ticker, interval="1m")
+            
             if success:
+                # Clear failure tracking on success
+                _failure_tracking.pop((ticker, task['task_id'], 'price'), None)
                 return float(data.get('close', 0))
-            else:
-                logger.warning(f"Failed to get price for {ticker} (task {task['task_id']}, user {task['telegram_user_id']})")
+            
+            # Failed - track it
+            _track_failure(ticker, task['task_id'], 'price', task['telegram_user_id'])
         
         elif condition_type == 'cash':
             success, data = await asyncio.to_thread(alpaca_api.get_account)
@@ -166,10 +190,14 @@ async def _get_condition_value(condition_type: str, ticker: str, task: dict) -> 
         
         elif condition_type == 'volume':
             success, data = await asyncio.to_thread(YFinanceAPI().quote, symbol=ticker, interval="1m")
+            
             if success:
+                # Clear failure tracking on success
+                _failure_tracking.pop((ticker, task['task_id'], 'volume'), None)
                 return float(data.get('volume', 0))
-            else:
-                logger.warning(f"Failed to get volume for {ticker} (task {task['task_id']}, user {task['telegram_user_id']})")
+            
+            # Failed - track it
+            _track_failure(ticker, task['task_id'], 'volume', task['telegram_user_id'])
         
         return None
     except Exception as e:

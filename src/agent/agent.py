@@ -173,9 +173,14 @@ class InvestiAgent:
         # Use session for user messages, skip for task-triggered runs
         session = None
         if use_session:
+            # Convert DATABASE_URL to use asyncpg driver for SQLAlchemy
+            db_url = os.getenv("DATABASE_URL")
+            if db_url.startswith("postgresql://"):
+                db_url = db_url.replace("postgresql://", "postgresql+asyncpg://")
+            
             underlying_session = SQLAlchemySession.from_url(
                 session_id=f"user_{self.user_id}",
-                url=os.getenv("DATABASE_URL"),
+                url=db_url,
                 create_tables=True
             )
             session = EncryptedSession(

@@ -23,17 +23,11 @@ class TelegramNetworkFilter(logging.Filter):
         if record.name.startswith('telegram') and record.levelno == logging.ERROR:
             msg = str(record.msg)
             # Simplify transient network errors
-            if 'polling for updates' in msg.lower() or 'NetworkError' in str(record.exc_info):
-                # Strip the full traceback for transient network errors
-                if record.exc_info:
-                    # Keep the error but remove exc_info to prevent traceback
-                    record.exc_text = None
-                    record.exc_info = None
-                    # Make the message more concise
-                    if 'Temporary failure in name resolution' in msg:
-                        record.msg = "Temporary network failure while polling (DNS resolution failed) - will retry"
-                    elif 'ConnectError' in msg or 'NetworkError' in msg:
-                        record.msg = "Network error while polling for updates - will retry"
+            if 'polling for updates' in msg.lower() or (record.exc_info and 'NetworkError' in str(record.exc_info[0])):
+                # Remove traceback for transient network errors
+                record.exc_text = None
+                record.exc_info = None
+                record.msg = "Network error while polling for updates - will retry"
         return True
 
 

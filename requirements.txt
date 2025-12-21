@@ -14,5 +14,4 @@ telegramify_markdown
 asyncpg
 exchange_calendars
 aiohttp
-sqlalchemy
-psycopg2
+openai-agents[sqlalchemy]

@@ -14,3 +14,4 @@ telegramify_markdown
 asyncpg
 exchange_calendars
 aiohttp
+sqlalchemy

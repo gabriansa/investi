@@ -28,3 +28,6 @@ credits:
 
 tasks:
   task_check_interval_seconds: 30
+
+session:
+  ttl_seconds: 3600  # 1 hour

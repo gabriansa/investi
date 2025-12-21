@@ -1,5 +1,6 @@
 from src.agent.context import Context
 from agents import Agent, Runner, OpenAIChatCompletionsModel, InputGuardrailTripwireTriggered, ModelSettings
+from agents.extensions.memory import SQLAlchemySession, EncryptedSession
 from openai import AsyncOpenAI
 from langsmith import traceable
 from src.agent.prompt_builder import get_analyst_prompt, get_portfolio_manager_prompt, get_trader_prompt, get_guardrail_prompt, get_technical_analyst_prompt
@@ -50,6 +51,7 @@ class InvestiAgent:
         self.trader_max_turns = agents_config['trader']['max_turns']
         self.analyst_max_turns = agents_config['analyst']['max_turns']
         self.technical_analyst_max_turns = agents_config['technical_analyst']['max_turns']
+        self.session_ttl = config['session']['ttl_seconds']
         
         # User credentials
         self.openrouter_api_key = openrouter_api_key
@@ -164,16 +166,32 @@ class InvestiAgent:
         )
 
     @traceable(name="agent_run", tags=["agent_execution"])
-    async def run(self, input: str) -> str:
+    async def run(self, input: str, use_session: bool = True) -> str:
         # Build agents with fresh data (account, positions, orders, etc.)
         await self._build_agents()
+        
+        # Use session for user messages, skip for task-triggered runs
+        session = None
+        if use_session:
+            underlying_session = SQLAlchemySession.from_url(
+                session_id=f"user_{self.user_id}",
+                url=os.getenv("DATABASE_URL"),
+                create_tables=True
+            )
+            session = EncryptedSession(
+                session_id=f"user_{self.user_id}",
+                underlying_session=underlying_session,
+                encryption_key=os.getenv("SESSION_ENCRYPTION_KEY", "default-key-change-in-prod"),
+                ttl=self.session_ttl
+            )
         
         try:
             result = await Runner.run(
                 starting_agent=self.portfolio_manager,
                 input=input,
                 context=self.context,
-                max_turns=self.portfolio_manager_max_turns
+                max_turns=self.portfolio_manager_max_turns,
+                session=session
             )
             return result.final_output
         except InputGuardrailTripwireTriggered:

@@ -230,7 +230,7 @@ async def _execute_task(task, send_message_callback, min_credits_to_run: float, 
     )
 
     try:
-        result = await agent.run(context_msg)
+        result = await agent.run(context_msg, use_session=False)
         await send_message_callback(result, telegram_user_id)
         
         # Mark task completed BEFORE removing from queue to prevent double execution

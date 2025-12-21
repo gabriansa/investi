@@ -15,3 +15,4 @@ asyncpg
 exchange_calendars
 aiohttp
 sqlalchemy
+psycopg2

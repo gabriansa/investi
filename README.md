@@ -1,12 +1,12 @@
 # Investi
 
-![Investi Demo](cover.png)
-
 An autonomous AI financial analyst and trader that runs on Telegram.
 
 → **[gabriansa.github.io/investi](https://gabriansa.github.io/investi/)**
 
 → **[Telegram Bot: @investi101_bot](https://t.me/investi101_bot)**
+
+![Investi Demo](cover.png)
 
 ## Quick Setup
 

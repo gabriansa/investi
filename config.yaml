@@ -1,0 +1,30 @@
+agents:
+  portfolio_manager:
+    model_name: "anthropic/claude-sonnet-4.5"
+    max_turns: 100
+  trader:
+    model_name: "anthropic/claude-sonnet-4.5"
+    max_turns: 100
+  analyst:
+    model_name: "anthropic/claude-sonnet-4.5"
+    max_turns: 100
+  technical_analyst:
+    model_name: "anthropic/claude-sonnet-4.5"
+    max_turns: 100
+  guardrail:
+    model_name: "openai/gpt-4o-mini"
+
+embeddings:
+  model_name: "openai/text-embedding-3-large"
+
+tools:
+  web_search_model: "perplexity/sonar-pro-search"
+  screener_finder_model: "openai/gpt-4o-mini"
+
+credits:
+  min_credits_warning: 10
+  min_credits_to_run: 5
+  credit_check_interval_hours: 1
+
+tasks:
+  task_check_interval_seconds: 30

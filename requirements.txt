@@ -1,0 +1,16 @@
+python-telegram-bot
+pyyaml
+requests
+python-dotenv
+python-dateutil
+yfinance
+yahooquery
+ta-lib
+openai-agents
+langsmith
+tiktoken
+mplfinance
+telegramify_markdown
+asyncpg
+exchange_calendars
+aiohttp

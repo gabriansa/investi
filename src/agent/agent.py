@@ -1,11 +1,11 @@
 from src.agent.context import Context
 from agents import Agent, Runner, OpenAIChatCompletionsModel, InputGuardrailTripwireTriggered, ModelSettings
-from agents.extensions.memory import SQLAlchemySession, EncryptedSession
 from openai import AsyncOpenAI
 from langsmith import traceable
 from src.agent.prompt_builder import get_analyst_prompt, get_portfolio_manager_prompt, get_trader_prompt, get_guardrail_prompt, get_technical_analyst_prompt
 from src.agent.caching import enable_caching
 from src.agent.guardrails import create_portfolio_guardrail
+from src.services.simple_session import SimpleSession
 
 import os
 from dotenv import load_dotenv
@@ -173,20 +173,8 @@ class InvestiAgent:
         # Use session for user messages, skip for task-triggered runs
         session = None
         if use_session:
-            # Convert DATABASE_URL to use asyncpg driver for SQLAlchemy
-            db_url = os.getenv("DATABASE_URL")
-            if db_url.startswith("postgresql://"):
-                db_url = db_url.replace("postgresql://", "postgresql+asyncpg://")
-            
-            underlying_session = SQLAlchemySession.from_url(
+            session = SimpleSession(
                 session_id=f"user_{self.user_id}",
-                url=db_url,
-                create_tables=True
-            )
-            session = EncryptedSession(
-                session_id=f"user_{self.user_id}",
-                underlying_session=underlying_session,
-                encryption_key=os.getenv("SESSION_ENCRYPTION_KEY", "default-key-change-in-prod"),
                 ttl=self.session_ttl
             )
         

@@ -126,18 +126,6 @@ async def init_database():
                 FOREIGN KEY (note_id) REFERENCES notes (note_id) ON DELETE CASCADE
             )
         """)
-        
-        # Agent sessions table (simplified session storage)
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS agent_sessions (
-                session_id TEXT NOT NULL,
-                item_index INTEGER NOT NULL,
-                role TEXT NOT NULL,
-                content TEXT NOT NULL,
-                created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-                PRIMARY KEY (session_id, item_index)
-            )
-        """)
 
 async def close_pool():
     """Close the connection pool on shutdown."""

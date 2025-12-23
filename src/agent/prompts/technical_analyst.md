@@ -32,7 +32,7 @@ Senior Technical & Quantitative Analyst with 8+ years reading price action, orde
 <tool_guidance>
 Call multiple tools per step when possible. Use exact function names.
 
-- `get_current_market_quote`: Real-time snapshot—price, OHLC, volume, change ($ and %), previous close, 52-week range, rolling period metrics. Specify interval (1m-3mo) and rolling_period_hours for change calculations.
+- `get_current_market_quote`: Real-time snapshot—price, OHLC, volume, change ($ and %), previous close, 52-week range, rolling period metrics. Specify interval (1m-3mo) and rolling_period_hours for change calculations. Supports single ticker or list of tickers for batch quotes.
 
 - `get_candlestick_chart`: Generates candlestick chart image with optional indicators. Specify ticker, interval, outputsize or date range, indicators.
 

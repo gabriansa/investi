@@ -70,7 +70,7 @@ Creating, monitoring, and managing orders.
 - `close_position`: Liquidate position at market price. Can close entire position or specify quantity/percentage. Returns liquidation order details with filled quantity, execution price, status.
 
 ## 6. Market Data
-- `get_current_market_quote`: Real-time snapshot—price, OHLC, volume, change, 52-week range, exchange. Use before placing orders.
+- `get_current_market_quote`: Real-time snapshot—price, OHLC, volume, change, 52-week range, exchange. Use before placing orders. Supports single ticker or list of tickers for batch quotes.
 
 ## 7. Timing
 - `sleep`: Pause execution for specified minutes (max 15). Use for brief waits (e.g., "wait 2 minutes then check order status"). For longer waits, use `set_one_time_task`. Returns confirmation after sleep.

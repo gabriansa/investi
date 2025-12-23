@@ -18,7 +18,7 @@ def get_positions(
     if ticker_symbols is None:
         success, response = ctx.context.alpaca_api.get_all_positions()
         if not success:
-            return {"error": response['message']}
+            return {"error": response}
         
         # Format timestamp fields in all positions
         format_api_timestamps(response)
@@ -30,7 +30,7 @@ def get_positions(
             if not success:
                 results.append({
                     "symbol": symbol,
-                    "error": response['message']
+                    "error": response
                 })
             else:
                 format_api_timestamps(response)
@@ -61,7 +61,7 @@ def close_position(
     )
 
     if not success:
-        return {"error": response['message']}
+        return {"error": response}
     
     # Format timestamp fields (close_position returns order data)
     format_api_timestamps(response)

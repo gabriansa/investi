@@ -43,44 +43,52 @@ def fetch_historical_price_data(
 @function_tool
 def get_current_market_quote(
     ctx: RunContextWrapper[Context],
-    ticker_symbol: str,
+    ticker_symbol: str | list[str],
     interval: Literal["1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h", "4h", "1d", "5d", "1wk", "1mo", "3mo"],
     rolling_period_hours: int = 24,
     ):
     """
-    Retrieves a real-time snapshot of current market data for a given ticker symbol.
+    Retrieves a real-time snapshot of current market data for one or more ticker symbols.
     Returns key metrics including: current price, open/high/low/close, volume, average volume,
     price change (absolute and percent), previous close, 52-week high/low range, extended hours
     pricing, exchange info, and currency. Use this for quick market overviews or current state checks.
 
     Args:
-        ticker_symbol (required): Stock ticker or crypto symbol (e.g., "AAPL", "BTC-USD").
+        ticker_symbol (required): Single ticker symbol (e.g., "AAPL") or list of symbols (e.g., ["AAPL", "MSFT", "GOOGL"]).
         interval (required): Time interval for quote data. Options: 1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 4h, 1d, 5d, 1wk, 1mo, 3mo.
         rolling_period_hours (optional): Time window in hours to calculate rolling price change (default: 24).
     """
-    success, data = ctx.context.yfinance_api.quote(
-        symbol=ticker_symbol, 
-        interval=interval, 
-        rolling_period=rolling_period_hours
-    )
-    if success:
-        return data
-    else:
-        return {"error": data}
+    # Handle both single symbol and list of symbols
+    symbols = [ticker_symbol] if isinstance(ticker_symbol, str) else ticker_symbol
+    
+    results = {}
+    for symbol in symbols:
+        success, data = ctx.context.yfinance_api.quote(
+            symbol=symbol, 
+            interval=interval, 
+            rolling_period=rolling_period_hours
+        )
+        results[symbol] = data if success else {"error": data}
+    
+    # Return unwrapped result for single symbol (backward compatible)
+    return results[symbols[0]] if len(symbols) == 1 else results
 
 @function_tool
 async def find_screeners(
     ctx: RunContextWrapper[Context],
-    search_query: str,
+    search_query: str | list[str],
     ):
     """
     Finds available screeners using natural language search.
     Returns a list of screener names and descriptions that can then be used with execute_screener.
     
     Args:
-        search_query (required): Natural language search (e.g., "tech gainers", "German stocks winning today", "crypto stats").
+        search_query (required): Single search query (e.g., "tech gainers") or list of queries (e.g., ["tech gainers", "crypto stats", "dividend stocks"]).
     """
-    # Get available screeners (needed for both methods)
+    # Handle both single query and list of queries
+    queries = [search_query] if isinstance(search_query, str) else search_query
+    
+    # Get available screeners (needed for all queries)
     success, available_screeners = ctx.context.yfinance_api.available_screeners()
     if not success:
         return {"error": available_screeners}
@@ -93,28 +101,32 @@ async def find_screeners(
         matches: list[ScreenerMatch]
 
     available_screeners_str = "\n".join([f"{screener['name']}: {screener['description']}" for screener in available_screeners])
-
     system_prompt = load_prompt("find_screeners.md").format(available_screeners=available_screeners_str)
 
-    try:
-        completion = await ctx.context.client.chat.completions.parse(
-            model=ctx.context.screener_finder_model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": search_query}
-            ],
-            response_format=ScreenerResponse
-        )   
-        matches = completion.choices[0].message.parsed.matches
-        screener_map = {s["name"]: s for s in available_screeners}
-        relevant_screeners = [
-            {**screener_map[match.key], "relevance_score": match.relevance_score} 
-            for match in matches 
-            if match.key in screener_map
-        ]
-        return relevant_screeners
-    except Exception as e:
-        return {"error": f"Failed to search for screeners: {str(e)}"}
+    results = {}
+    for query in queries:
+        try:
+            completion = await ctx.context.client.chat.completions.parse(
+                model=ctx.context.screener_finder_model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": query}
+                ],
+                response_format=ScreenerResponse
+            )   
+            matches = completion.choices[0].message.parsed.matches
+            screener_map = {s["name"]: s for s in available_screeners}
+            relevant_screeners = [
+                {**screener_map[match.key], "relevance_score": match.relevance_score} 
+                for match in matches 
+                if match.key in screener_map
+            ]
+            results[query] = relevant_screeners
+        except Exception as e:
+            results[query] = {"error": f"Failed to search for screeners: {str(e)}"}
+    
+    # Return unwrapped result for single query (backward compatible)
+    return results[queries[0]] if len(queries) == 1 else results
     
 @function_tool
 def execute_screener(

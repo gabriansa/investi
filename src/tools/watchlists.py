@@ -100,17 +100,21 @@ async def remove_watchlist(
 async def modify_watchlist_symbols(
     ctx: RunContextWrapper[Context],
     watchlist_id: str,
-    ticker_symbol: str,
+    ticker_symbol: str | list[str],
     action: Literal["add", "remove"],
     ):
     """
-    Adds or removes an asset from a watchlist. Returns confirmation when modified.
+    Adds or removes one or more assets from a watchlist. Returns confirmation when modified.
 
     Args:
         watchlist_id (required): Watchlist ID to modify.
-        ticker_symbol (required): Stock ticker or crypto symbol (e.g., "AAPL", "BTC-USD").
-        action (required): Either "add" to add the symbol or "remove" to remove it.
+        ticker_symbol (required): Single ticker symbol (e.g., "AAPL") or list of symbols (e.g., ["AAPL", "MSFT", "GOOGL"]).
+        action (required): Either "add" to add the symbol(s) or "remove" to remove them.
     """ 
+    # Handle both single symbol and list of symbols
+    symbols = [ticker_symbol] if isinstance(ticker_symbol, str) else ticker_symbol
+    symbols_upper = [s.upper() for s in symbols]
+    
     async with get_async_db_connection() as conn:
         row = await conn.fetchrow(
             "SELECT assets FROM watchlists WHERE watchlist_id = $1 AND telegram_user_id = $2",
@@ -122,18 +126,41 @@ async def modify_watchlist_symbols(
 
         # assets is already a list from JSONB
         current_assets = row['assets'] if isinstance(row['assets'], list) else []
-        symbol_upper = ticker_symbol.upper()
+        
+        added = []
+        removed = []
+        skipped = []
         
         if action == "add":
-            if symbol_upper in current_assets:
-                return {"error": f"{symbol_upper} already in watchlist with ID {watchlist_id}."}
-            current_assets.append(symbol_upper)
-            message = f"Added {symbol_upper} to watchlist with ID {watchlist_id}."
+            for symbol in symbols_upper:
+                if symbol in current_assets:
+                    skipped.append(symbol)
+                else:
+                    current_assets.append(symbol)
+                    added.append(symbol)
         else:  # remove
-            if symbol_upper not in current_assets:
-                return {"error": f"{symbol_upper} not found in watchlist with ID {watchlist_id}."}
-            current_assets.remove(symbol_upper)
-            message = f"Removed {symbol_upper} from watchlist with ID {watchlist_id}."
+            for symbol in symbols_upper:
+                if symbol not in current_assets:
+                    skipped.append(symbol)
+                else:
+                    current_assets.remove(symbol)
+                    removed.append(symbol)
+        
+        # Build message
+        messages = []
+        if action == "add":
+            if added:
+                messages.append(f"Added {', '.join(added)} to watchlist with ID {watchlist_id}.")
+            if skipped:
+                messages.append(f"Skipped {', '.join(skipped)} (already in watchlist).")
+        else:  # remove
+            if removed:
+                messages.append(f"Removed {', '.join(removed)} from watchlist with ID {watchlist_id}.")
+            if skipped:
+                messages.append(f"Skipped {', '.join(skipped)} (not in watchlist).")
+        
+        if not messages:
+            return {"error": f"No changes made to watchlist with ID {watchlist_id}."}
         
         updated_at = datetime.now(timezone.utc)
         await conn.execute(
@@ -141,4 +168,4 @@ async def modify_watchlist_symbols(
             current_assets, updated_at, watchlist_id, ctx.context.user_id
         )
     
-    return message
+    return " ".join(messages)

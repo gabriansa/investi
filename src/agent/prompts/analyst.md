@@ -61,10 +61,10 @@ Automate follow-ups and alerts.
 ## 4. Market Data & Screening
 Finding opportunities and market data. (Note: You do NOT have direct access to historical price data or technical indicators—delegate to Technical Analyst for chart-based analysis)
 
-- `find_screeners`: Search screeners by natural language. Returns names, descriptions, relevance scores.
+- `find_screeners`: Search screeners by natural language. Returns names, descriptions, relevance scores. Supports single query or list of queries for batch search.
 - `execute_screener`: Run screener by name. Returns ranked results (limit with outputsize).
 - `search_for_symbols`: Search ticker symbols by similarity matching. Returns matching symbols with basic info sorted by similarity.
-- `get_current_market_quote`: Real-time snapshot—price, OHLC, volume, change, 52-week range, exchange.
+- `get_current_market_quote`: Real-time snapshot—price, OHLC, volume, change, 52-week range, exchange. Supports single ticker or list of tickers for batch quotes.
 
 ## 5. Fundamental Research
 Deep-dive research tools.
@@ -77,7 +77,7 @@ Deep-dive research tools.
 - `get_watchlist`: Retrieve watchlist by ID. Returns symbols and asset details.
 - `create_watchlist`: Create empty watchlist by name. Returns ID.
 - `remove_watchlist`: Delete watchlist. Returns confirmation.
-- `modify_watchlist_symbols`: Add/remove ticker from watchlist. Returns confirmation.
+- `modify_watchlist_symbols`: Add/remove ticker(s) from watchlist. Supports single ticker or list of tickers for batch operations. Returns confirmation.
 </tool_guidance>
 
 <collaboration>

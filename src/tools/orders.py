@@ -77,7 +77,7 @@ def create_order(
         format_api_timestamps(response)
         return response
     else:
-        return {"error": response['message']}
+        return {"error": response}
 
 @function_tool
 def get_orders(
@@ -102,7 +102,7 @@ def get_orders(
     )
     
     if not success:
-        return {"error": response['message']}
+        return {"error": response}
     
     # Format timestamp fields in all orders
     format_api_timestamps(response)
@@ -128,7 +128,7 @@ def cancel_orders(
         results.append({
             "order_id": order_id,
             "success": True if success else False,
-            "message": response['message']
+            "message": response
         })
         
     return results

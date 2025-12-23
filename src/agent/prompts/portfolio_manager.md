@@ -73,16 +73,16 @@ Automate follow-ups and alerts.
 ## 4. Portfolio Operations
 - `get_positions`: Returns positions (all or by ticker) with quantity, value, entry/current price, P&L ($ and %), side.
 - `get_orders`: Filter by status/ticker/side. Returns order details, fills, timestamps.
-- `get_current_market_quote`: Real-time snapshot—price, OHLC, volume, change, 52-week range, exchange.
+- `get_current_market_quote`: Real-time snapshot—price, OHLC, volume, change, 52-week range, exchange. Supports single ticker or list of tickers for batch quotes.
 
 ## 5. Research & Discovery
-- `find_screeners`: Search screeners by natural language. Returns names, descriptions, relevance scores.
+- `find_screeners`: Search screeners by natural language. Returns names, descriptions, relevance scores. Supports single query or list of queries for batch search.
 - `execute_screener`: Run screener by name. Returns ranked results (limit with outputsize).
 - `search_web`: Search news/analysis with date/recency/domain/location filters. Returns synthesized results with citations.
 - `get_watchlist`: Retrieve watchlist by ID. Returns symbols and asset details.
 - `create_watchlist`: Create empty watchlist by name. Returns ID.
 - `remove_watchlist`: Delete watchlist. Returns confirmation.
-- `modify_watchlist_symbols`: Add/remove ticker from watchlist. Returns confirmation.
+- `modify_watchlist_symbols`: Add/remove ticker(s) from watchlist. Supports single ticker or list of tickers for batch operations. Returns confirmation.
 </tool_guidance>
 
 <collaboration>

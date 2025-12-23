@@ -236,7 +236,7 @@ def search_for_symbols(
 @function_tool
 def get_company_profile(
     ctx: RunContextWrapper[Context],
-    ticker_symbol: str,
+    ticker_symbol: str | list[str],
     ):
     """
     Retrieves comprehensive company/asset information for fundamental research.
@@ -245,7 +245,7 @@ def get_company_profile(
     Use to understand what a company does or gather fundamentals for investment decisions.
 
     Args:
-        ticker_symbol (required): Stock ticker or crypto symbol (e.g., "AAPL", "BTC-USD").
+        ticker_symbol (required): Single ticker symbol (e.g., "AAPL") or list of symbols (e.g., ["AAPL", "MSFT", "GOOGL"]).
     """
     KEEP_FIELDS = [
         # Identification
@@ -298,13 +298,21 @@ def get_company_profile(
         "heldPercentInsiders", "heldPercentInstitutions",
     ]
     
-    success, data = ctx.context.yfinance_api.profile(symbol=ticker_symbol)
-    if success:
-        # Filter to keep only relevant fields
-        filtered_data = {k: v for k, v in data.items() if k in KEEP_FIELDS}
-        return filtered_data
-    else:
-        return {"error": data}
+    # Handle both single symbol and list of symbols
+    symbols = [ticker_symbol] if isinstance(ticker_symbol, str) else ticker_symbol
+    
+    results = {}
+    for symbol in symbols:
+        success, data = ctx.context.yfinance_api.profile(symbol=symbol)
+        if success:
+            # Filter to keep only relevant fields
+            filtered_data = {k: v for k, v in data.items() if k in KEEP_FIELDS}
+            results[symbol] = filtered_data
+        else:
+            results[symbol] = {"error": data}
+    
+    # Return unwrapped result for single symbol (backward compatible)
+    return results[symbols[0]] if len(symbols) == 1 else results
 
 @function_tool
 def calculate_technical_indicator(

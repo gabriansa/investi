@@ -69,7 +69,7 @@ Finding opportunities and market data. (Note: You do NOT have direct access to h
 ## 5. Fundamental Research
 Deep-dive research tools.
 
-- `get_company_profile`: Comprehensive company information—business description, sector, industry, headquarters, executives, market cap, P/E, dividends, 52-week performance, analyst ratings, revenue, margins. Use for company understanding and fundamentals.
+- `get_company_profile`: Comprehensive company information—business description, sector, industry, headquarters, executives, market cap, P/E, dividends, 52-week performance, analyst ratings, revenue, margins. Use for company understanding and fundamentals. Supports single ticker or list of tickers for batch research.
 - `search_sec_filings`: Search SEC filings (10-K, 10-Q, 8-K, etc.) by filing types, company, financial terms, date ranges. Returns excerpts with citations. Use for regulatory research and official financial data.
 - `search_web`: Search news/analysis with date/recency/domain/location filters. Returns synthesized results with citations.
 

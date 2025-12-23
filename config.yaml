@@ -1,15 +1,15 @@
 agents:
   portfolio_manager:
-    model_name: "anthropic/claude-sonnet-4.5"
+    model_name: "openai/gpt-5.2"
     max_turns: 100
   trader:
-    model_name: "anthropic/claude-sonnet-4.5"
+    model_name: "openai/gpt-5.2"
     max_turns: 100
   analyst:
-    model_name: "anthropic/claude-sonnet-4.5"
+    model_name: "openai/gpt-5.2"
     max_turns: 100
   technical_analyst:
-    model_name: "anthropic/claude-sonnet-4.5"
+    model_name: "openai/gpt-5.2"
     max_turns: 100
   guardrail:
     model_name: "openai/gpt-4o-mini"

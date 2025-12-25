@@ -40,7 +40,11 @@ def chunk_text(text: str, max_length: int = 4096) -> list:
 
 
 async def send_markdown_message(bot, chat_id: int, message: str, max_length: int = 4096):
-    """Send markdown message with chunking, retry logic, and fallbacks."""
+    """Send markdown message with chunking, retry logic, and fallbacks.
+    
+    Uses standard Markdown syntax (** for bold, * for italic) which is 
+    automatically converted to Telegram's MarkdownV2 format.
+    """
     try:
         # Convert markdown to Telegram-friendly format
         converted = telegramify_markdown.markdownify(message)

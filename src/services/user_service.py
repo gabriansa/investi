@@ -46,14 +46,14 @@ class UserService:
                 return True, f"You have enough credits"
             else:
                 return False, (
-                    f"⚠️ *Insufficient Credits*\n\n"
-                    f"You have *${remaining:.2f}* remaining.\n"
-                    f"You need at least *${min_credits:.0f}* to run.\n\n"
+                    f"⚠️ **Insufficient Credits**\n\n"
+                    f"You have **${remaining:.2f}** remaining.\n"
+                    f"You need at least **${min_credits:.0f}** to run.\n\n"
                     f"[Top up your OpenRouter credits](https://openrouter.ai/settings/credits)"
                 )
         return False, (
-            f"⚠️ *Insufficient Credits*\n\n"
-            f"You need at least *${min_credits:.0f}* to run.\n\n"
+            f"⚠️ **Insufficient Credits**\n\n"
+            f"You need at least **${min_credits:.0f}** to run.\n\n"
             f"[Top up your OpenRouter credits](https://openrouter.ai/settings/credits)"
         )
 
@@ -70,16 +70,16 @@ class UserService:
                 telegram_user_id, telegram_username, datetime.now(timezone.utc)
             )
             message = (
-                "*Welcome to Investi!*\n\n"
-                "*Step 1: Create Your Accounts*\n"
+                "**Welcome to Investi!**\n\n"
+                "**Step 1: Create Your Accounts**\n"
                 "- *Alpaca* - Brokerage platform; [Sign up here](https://app.alpaca.markets/signup)."
                 " _Strongly recommend using a paper trading account unless you enjoy living on the edge._\n"
                 "- *OpenRouter* - AI API provider; [Sign up here](https://openrouter.ai/).\n\n"
-                "*Step 2: Set Your API Credentials*\n"
+                "**Step 2: Set Your API Credentials**\n"
                 "Once you have your accounts, connect them:\n"
                 "- *Alpaca credentials:* /set_alpaca\n"
                 "- *OpenRouter API key:* /set_openrouter\n\n"
-                "*Step 3: Set Your Operating Framework* with: /set_operating_framework\n"
+                "**Step 3: Set Your Operating Framework** with: /set_operating_framework\n"
                 "Define the principles that guide your trading decisions. This helps me understand your risk tolerance, strategy preferences, and goals.\n\n"
                 "_Example framework:_\n"
                 "```\n"
@@ -223,12 +223,12 @@ class UserService:
         # Account Summary
         if account_success:
             acc = account_response
-            status_lines.append("*Account*")
+            status_lines.append("**Account**")
             status_lines.append(f"• Portfolio Value: `${float(acc['portfolio_value']):,.2f}`")
             status_lines.append(f"• Cash: `${float(acc['cash']):,.2f}`")
         
         # Positions
-        status_lines.append("\n*Positions*")
+        status_lines.append("\n**Positions**")
         if positions_success and positions_response:
             # Batch format all ticker links
             symbols = [pos['symbol'] for pos in positions_response]
@@ -260,7 +260,7 @@ class UserService:
             status_lines.append("_No open positions_")
         
         # Orders
-        status_lines.append("\n*Orders*")
+        status_lines.append("\n**Orders**")
         if orders_success and orders_response:
             # Batch format all ticker links
             symbols = [order['symbol'] for order in orders_response]
@@ -291,7 +291,7 @@ class UserService:
             status_lines.append("_No pending orders_")
         
         # OpenRouter Usage
-        status_lines.append("\n*OpenRouter Usage*")
+        status_lines.append("\n**OpenRouter Usage**")
         if key_details_success:
             data = key_details_response.get('data', {})
             status_lines.append(
@@ -350,7 +350,7 @@ class UserService:
         symbol_links = await format_ticker_links_async(all_symbols) if all_symbols else {}
         
         # One Time Tasks
-        lines.append("*One Time Tasks*")
+        lines.append("**One Time Tasks**")
         if one_time:
             for task in one_time:
                 ticker = symbol_links.get(task['ticker_symbol'], '') + " " if task['ticker_symbol'] else ""
@@ -361,7 +361,7 @@ class UserService:
             lines.append("_None_")
         
         # Recurring Tasks
-        lines.append("\n*Recurring Tasks*")
+        lines.append("\n**Recurring Tasks**")
         if recurring:
             for task in recurring:
                 ticker = symbol_links.get(task['ticker_symbol'], '') + " " if task['ticker_symbol'] else ""
@@ -396,7 +396,7 @@ class UserService:
             lines.append("_None_")
         
         # Alerts
-        lines.append("\n*Alerts*")
+        lines.append("\n**Alerts**")
         if alerts:
             for alert in alerts:
                 config = json.loads(alert['trigger_config']) if isinstance(alert['trigger_config'], str) else alert['trigger_config']
@@ -430,7 +430,7 @@ class UserService:
             )
             watchlists = [dict(row) for row in rows]
         
-        lines = ["*Watchlists*"]
+        lines = ["**Watchlists**"]
         if watchlists:
             # Batch format all ticker links
             all_symbols = []

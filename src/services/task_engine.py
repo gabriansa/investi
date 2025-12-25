@@ -224,10 +224,10 @@ async def _execute_task(task, send_message_callback, min_credits_to_run: float, 
     await _mark_task_completed(task)
     
     # Build trigger message
-    trigger_message = f"🔔 *{trigger_type.replace('_', ' ').title()} Task*"
+    trigger_message = f"🔔 **{trigger_type.replace('_', ' ').title()} Task**"
     if ticker:
         trigger_message += f" ({ticker})"
-    trigger_message += f"\n\n*Description:*\n{description}"
+    trigger_message += f"\n\n**Description:**\n{description}"
 
     # Check credits before running
     user_service = UserService()
@@ -239,7 +239,7 @@ async def _execute_task(task, send_message_callback, min_credits_to_run: float, 
         # Rollback task state since we didn't execute
         await _rollback_task_state(task_id, original_state)
         queued_task_ids.discard(task_id)
-        await send_message_callback(trigger_message + "\n\n*Couldn't run:*\n" + message, telegram_user_id)
+        await send_message_callback(trigger_message + "\n\n**Couldn't run:**\n" + message, telegram_user_id)
         return
     
     await send_message_callback(trigger_message, task['telegram_user_id'])

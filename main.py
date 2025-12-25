@@ -90,7 +90,7 @@ async def post_init(application: Application):
                     await send_markdown_message(
                         application.bot, 
                         user_id, 
-                        "*Investi is back online*"
+                        "**Investi is back online**"
                     )
                 except Exception as e:
                     logger.error(f"Failed to notify user {user_id}: {e}")
@@ -116,7 +116,7 @@ async def broadcast_shutdown(application: Application):
                     await send_markdown_message(
                         application.bot, 
                         user_id, 
-                        "*Investi is shutting down for maintenance purposes*\nTry again in a moment. You will be notified when it's back online."
+                        "**Investi is shutting down for maintenance purposes**\nYou will be notified when it's back online."
                     )
                 except Exception as e:
                     logger.error(f"Failed to notify user {user_id}: {e}")

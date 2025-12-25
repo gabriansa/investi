@@ -233,7 +233,7 @@ class InvestiAgent:
             include_tasks=True,
             include_watchlists=True
         )
-        input_with_background = f"{background_info}\n\n<message>{input}</message>"
+        input_with_background = f"{background_info}\n\n{input}"
         
         # Use session for user messages, skip for task-triggered runs
         session = None

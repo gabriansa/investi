@@ -227,7 +227,7 @@ async def _execute_task(task, send_message_callback, min_credits_to_run: float, 
     )
     if not has_enough_credits:
         logger.warning(f"Task {task_id} for user {telegram_user_id} skipped: insufficient credits")
-        queued_task_ids.discard(task_id)  # Allow re-queuing next cycle
+        queued_task_ids.discard(task_id)  # Allow re-queuing next cycle for retry
         await send_message_callback(trigger_message + "\n\n**Couldn't run:**\n" + message, telegram_user_id)
         return
     
@@ -261,12 +261,16 @@ async def _execute_task(task, send_message_callback, min_credits_to_run: float, 
         result = await agent.run(context_msg, use_session=False)
         await send_message_callback(result, telegram_user_id)
         
-        # Mark task completed BEFORE removing from queue to prevent double execution
+        # Mark task completed in DB and remove from queue atomically
         await _mark_task_completed(task)
-        logger.info(f"Task {task_id} completed for user {telegram_user_id}")
-    finally:
-        # Always remove from queue, even if execution failed
+        # CRITICAL: Remove from queue AFTER DB commit to prevent race condition
         queued_task_ids.discard(task_id)
+        logger.info(f"Task {task_id} completed for user {telegram_user_id}")
+    except Exception as e:
+        logger.error(f"Error executing task {task_id} for user {telegram_user_id}: {e}", exc_info=True)
+        # On error, remove from queue to allow retry on next check cycle
+        queued_task_ids.discard(task_id)
+        raise
 
 async def _mark_task_completed(task):
     """Update task in DB after successful execution."""

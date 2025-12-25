@@ -111,7 +111,6 @@ class AlpacaAPI:
             stop_loss_api = {k: str(v) for k, v in stop_loss.items()}
         
         payload = {
-            "type": type,
             "time_in_force": time_in_force,
             "symbol": to_alpaca_format(symbol),
             "qty": str(qty) if qty is not None else None,

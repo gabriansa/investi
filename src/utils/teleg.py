@@ -7,7 +7,7 @@ import telegramify_markdown
 logger = logging.getLogger(__name__)
 
 
-async def send_message_with_retry(bot, chat_id: int, text: str, parse_mode: str = 'Markdown', max_retries: int = 2):
+async def send_message_with_retry(bot, chat_id: int, text: str, parse_mode: str = 'MarkdownV2', max_retries: int = 2):
     """Send message with automatic retry on timeout."""
     for attempt in range(max_retries):
         try:

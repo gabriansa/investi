@@ -1,9 +1,9 @@
 from src.agent.context import Context
-from agents import Agent, Runner, OpenAIChatCompletionsModel, InputGuardrailTripwireTriggered, ModelSettings
+from agents import Agent, Runner, OpenAIChatCompletionsModel, InputGuardrailTripwireTriggered, ModelSettings, function_tool, RunContextWrapper
 from agents.extensions.memory import SQLAlchemySession, EncryptedSession
 from openai import AsyncOpenAI
 from langsmith import traceable
-from src.agent.prompt_builder import get_analyst_prompt, get_portfolio_manager_prompt, get_trader_prompt, get_guardrail_prompt, get_technical_analyst_prompt
+from src.agent.prompt_builder import get_analyst_prompt, get_portfolio_manager_prompt, get_trader_prompt, get_guardrail_prompt, get_technical_analyst_prompt, get_background_information
 from src.agent.caching import enable_caching
 from src.agent.guardrails import create_portfolio_guardrail
 
@@ -51,6 +51,10 @@ class InvestiAgent:
         self.trader_max_turns = agents_config['trader']['max_turns']
         self.analyst_max_turns = agents_config['analyst']['max_turns']
         self.technical_analyst_max_turns = agents_config['technical_analyst']['max_turns']
+        self.portfolio_manager_reasoning = agents_config['portfolio_manager']['reasoning_effort']
+        self.trader_reasoning = agents_config['trader']['reasoning_effort']
+        self.analyst_reasoning = agents_config['analyst']['reasoning_effort']
+        self.technical_analyst_reasoning = agents_config['technical_analyst']['reasoning_effort']
         self.session_ttl = config['session']['ttl_seconds']
         
         # User credentials
@@ -61,9 +65,6 @@ class InvestiAgent:
         
         self.client = AsyncOpenAI(base_url=os.getenv("OPENROUTER_BASE_URL"), api_key=self.openrouter_api_key)
         self.cached_client = enable_caching(self.client)
-        
-        # Model settings with reasoning config
-        self.model_settings = ModelSettings(extra_body={"reasoning": {"effort": "medium"}})
 
         # Context
         self.context = Context(
@@ -94,7 +95,7 @@ class InvestiAgent:
                 get_candlestick_chart,
             ],
             model=OpenAIChatCompletionsModel(model=self.technical_analyst_model, openai_client=self.cached_client),
-            model_settings=self.model_settings
+            model_settings=ModelSettings(extra_body={"reasoning": {"effort": self.technical_analyst_reasoning}})
         )
         
         # Analyst Agent
@@ -115,7 +116,7 @@ class InvestiAgent:
                 ),
                 ],
             model=OpenAIChatCompletionsModel(model=self.analyst_model, openai_client=self.cached_client),
-            model_settings=self.model_settings
+            model_settings=ModelSettings(extra_body={"reasoning": {"effort": self.analyst_reasoning}})
         )
 
         # Trader Agent
@@ -132,7 +133,7 @@ class InvestiAgent:
                 sleep,
             ],
             model=OpenAIChatCompletionsModel(model=self.trader_model, openai_client=self.cached_client),
-            model_settings=self.model_settings
+            model_settings=ModelSettings(extra_body={"reasoning": {"effort": self.trader_reasoning}})
         )
 
         # Portfolio Manager Agent
@@ -149,26 +150,90 @@ class InvestiAgent:
                 search_web,
                 get_watchlist, create_watchlist, remove_watchlist, modify_watchlist_symbols,
                 write_todos,
-                self.analyst.as_tool(
-                    tool_name="analyst",
-                    tool_description="Conducts deep fundamental research, business analysis, competitive positioning, valuation modeling, and produces evidence-backed investment recommendations.",
-                    max_turns=self.analyst_max_turns
-                ),
-                self.trader.as_tool(
-                    tool_name="trader",
-                    tool_description="Executes buy/sell orders, manages positions and order lifecycle, monitors fills and execution quality for stocks and crypto.",
-                    max_turns=self.trader_max_turns
-                ),
+                self._create_analyst_tool(),
+                self._create_trader_tool(),
             ],
             model=OpenAIChatCompletionsModel(model=self.portfolio_manager_model, openai_client=self.cached_client),
-            model_settings=self.model_settings,
+            model_settings=ModelSettings(extra_body={"reasoning": {"effort": self.portfolio_manager_reasoning}}),
             input_guardrails=[self.portfolio_guardrail]
         )
+
+    def _create_analyst_tool(self):
+        """Create analyst tool with background info injection."""
+        @function_tool
+        async def analyst(ctx: RunContextWrapper[Context], instructions: str) -> str:
+            """Conducts deep fundamental research, business analysis, competitive positioning, valuation modeling, and produces evidence-backed investment recommendations.
+            
+            Args:
+                instructions: The research task or question for the analyst to investigate.
+            """
+            # Analyst needs: account, tasks, watchlists (no positions/orders)
+            background_info = await get_background_information(
+                self.user_id,
+                include_account=True,
+                include_positions=False,
+                include_orders=False,
+                include_tasks=True,
+                include_watchlists=True
+            )
+            input_with_background = f"{background_info}\n\n<instructions>{instructions}</instructions>"
+            
+            result = await Runner.run(
+                starting_agent=self.analyst,
+                input=input_with_background,
+                context=ctx.context,
+                max_turns=self.analyst_max_turns
+            )
+            return str(result.final_output)
+        
+        return analyst
+    
+    def _create_trader_tool(self):
+        """Create trader tool with background info injection."""
+        @function_tool
+        async def trader(ctx: RunContextWrapper[Context], instructions: str) -> str:
+            """Executes buy/sell orders, manages positions and order lifecycle, monitors fills and execution quality for stocks and crypto.
+            
+            Args:
+                instructions: The trading instructions or order details for the trader to execute.
+            """
+            # Trader needs: account, positions, orders, tasks (no watchlists)
+            background_info = await get_background_information(
+                self.user_id,
+                include_account=True,
+                include_positions=True,
+                include_orders=True,
+                include_tasks=True,
+                include_watchlists=False
+            )
+            input_with_background = f"{background_info}\n\n<instructions>{instructions}</instructions>"
+            
+            result = await Runner.run(
+                starting_agent=self.trader,
+                input=input_with_background,
+                context=ctx.context,
+                max_turns=self.trader_max_turns
+            )
+            return str(result.final_output)
+        
+        return trader
 
     @traceable(name="agent_run", tags=["agent_execution"])
     async def run(self, input: str, use_session: bool = True) -> str:
         # Build agents with fresh data (account, positions, orders, etc.)
         await self._build_agents()
+        
+        # Inject background information into user input
+        # Portfolio Manager needs all context: account, positions, orders, tasks, watchlists
+        background_info = await get_background_information(
+            self.user_id,
+            include_account=True,
+            include_positions=True,
+            include_orders=True,
+            include_tasks=True,
+            include_watchlists=True
+        )
+        input_with_background = f"{background_info}\n\n<message>{input}</message>"
         
         # Use session for user messages, skip for task-triggered runs
         session = None
@@ -193,7 +258,7 @@ class InvestiAgent:
         try:
             result = await Runner.run(
                 starting_agent=self.portfolio_manager,
-                input=input,
+                input=input_with_background,
                 context=self.context,
                 max_turns=self.portfolio_manager_max_turns,
                 session=session

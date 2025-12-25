@@ -2,15 +2,19 @@ agents:
   portfolio_manager:
     model_name: "openai/gpt-5.2"
     max_turns: 100
+    reasoning_effort: "high"
   trader:
     model_name: "openai/gpt-5.2"
     max_turns: 100
+    reasoning_effort: "high"
   analyst:
     model_name: "openai/gpt-5.2"
     max_turns: 100
+    reasoning_effort: "high"
   technical_analyst:
     model_name: "openai/gpt-5.2"
     max_turns: 100
+    reasoning_effort: "high"
   guardrail:
     model_name: "openai/gpt-4o-mini"
 

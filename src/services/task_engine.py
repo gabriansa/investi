@@ -29,11 +29,10 @@ def _track_failure(ticker: str, task_id: str, failure_type: str, user_id: int):
     else:
         # Check if it's been failing for >10 minutes
         first_failure = _failure_tracking[key]
-        if (now - first_failure).seconds >= 600:  # 10 minutes
+        if (now - first_failure).total_seconds() >= 600:  # 10 minutes
             logger.warning(f"Persistent failure (>10min) getting {failure_type} for {ticker} (task {task_id}, user {user_id})")
             # Reset tracking so we don't spam logs - will warn again if still failing in another 10min
             _failure_tracking[key] = now
-
 
 async def check_tasks(send_message_callback, config: dict):
     """
@@ -108,7 +107,6 @@ async def check_tasks(send_message_callback, config: dict):
             logger.error(f"Error checking tasks: {e}")
         
         await asyncio.sleep(task_check_interval_seconds)
-
 
 async def _check_conditional_task(task) -> bool:
     """Check if a conditional task's condition is met."""
@@ -214,11 +212,22 @@ async def _execute_task(task, send_message_callback, min_credits_to_run: float, 
     
     logger.info(f"Task triggered for user {telegram_user_id}: ID={task_id}, Type={trigger_type}, Ticker={ticker or 'None'}")
     
+    # Save original state for rollback if execution fails
+    original_state = {
+        'is_active': task['is_active'],
+        'task_datetime': task.get('task_datetime'),
+        'trigger_config': task.get('trigger_config')
+    }
+    
+    # CRITICAL: Mark as completed/reschedule in DB FIRST to prevent re-triggering
+    # This ensures that any check cycle that runs during execution sees updated state
+    await _mark_task_completed(task)
+    
     # Build trigger message
-    trigger_message = f"🔔 **{trigger_type.replace('_', ' ').title()} Task**"
+    trigger_message = f"🔔 *{trigger_type.replace('_', ' ').title()} Task*"
     if ticker:
         trigger_message += f" ({ticker})"
-    trigger_message += f"\n\n**Description:**\n{description}"
+    trigger_message += f"\n\n*Description:*\n{description}"
 
     # Check credits before running
     user_service = UserService()
@@ -227,8 +236,10 @@ async def _execute_task(task, send_message_callback, min_credits_to_run: float, 
     )
     if not has_enough_credits:
         logger.warning(f"Task {task_id} for user {telegram_user_id} skipped: insufficient credits")
-        queued_task_ids.discard(task_id)  # Allow re-queuing next cycle for retry
-        await send_message_callback(trigger_message + "\n\n**Couldn't run:**\n" + message, telegram_user_id)
+        # Rollback task state since we didn't execute
+        await _rollback_task_state(task_id, original_state)
+        queued_task_ids.discard(task_id)
+        await send_message_callback(trigger_message + "\n\n*Couldn't run:*\n" + message, telegram_user_id)
         return
     
     await send_message_callback(trigger_message, task['telegram_user_id'])
@@ -247,8 +258,6 @@ async def _execute_task(task, send_message_callback, min_credits_to_run: float, 
             return format_timestamp(obj)
         return str(obj)
     
-    context_msg = f"Automated Task Triggered:\n{json.dumps(task_context, indent=2, default=datetime_encoder)}"
-
     agent = InvestiAgent(
         config=config,
         user_id=task['telegram_user_id'],
@@ -258,19 +267,38 @@ async def _execute_task(task, send_message_callback, min_credits_to_run: float, 
     )
 
     try:
-        result = await agent.run(context_msg, use_session=False)
+        message = f"<task_triggered>{json.dumps(task_context, indent=2, default=datetime_encoder)}</task_triggered>"
+        result = await agent.run(message, use_session=False)
         await send_message_callback(result, telegram_user_id)
-        
-        # Mark task completed in DB and remove from queue atomically
-        await _mark_task_completed(task)
-        # CRITICAL: Remove from queue AFTER DB commit to prevent race condition
-        queued_task_ids.discard(task_id)
         logger.info(f"Task {task_id} completed for user {telegram_user_id}")
     except Exception as e:
-        logger.error(f"Error executing task {task_id} for user {telegram_user_id}: {e}", exc_info=True)
-        # On error, remove from queue to allow retry on next check cycle
-        queued_task_ids.discard(task_id)
+        logger.error(f"Task {task_id} execution failed for user {telegram_user_id}: {e}", exc_info=True)
+        # Rollback task state on failure so it can retry
+        await _rollback_task_state(task_id, original_state)
         raise
+    finally:
+        # Always remove from queue after execution attempt (success or fail)
+        queued_task_ids.discard(task_id)
+
+async def _rollback_task_state(task_id: str, original_state: dict):
+    """Rollback task to original state if execution fails."""
+    async with get_async_db_connection() as conn:
+        if original_state.get('trigger_config'):
+            # Recurring task - restore datetime and config
+            await conn.execute(
+                "UPDATE tasks SET is_active = $1, task_datetime = $2, trigger_config = $3 WHERE task_id = $4",
+                original_state['is_active'],
+                original_state['task_datetime'],
+                original_state['trigger_config'],
+                task_id
+            )
+        else:
+            # One-time or conditional - just restore is_active
+            await conn.execute(
+                "UPDATE tasks SET is_active = $1 WHERE task_id = $2",
+                original_state['is_active'],
+                task_id
+            )
 
 async def _mark_task_completed(task):
     """Update task in DB after successful execution."""

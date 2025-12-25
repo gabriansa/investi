@@ -248,22 +248,12 @@ async def build_prompt(role: str, user_id: int) -> str:
     # Gather dynamic data (all as JSON strings)
     current_datetime = get_current_time_utc()
     market_info = get_market_info()
-    account_data = await get_account_data(user_id)
-    positions = await get_positions_data(user_id)
-    orders = await get_orders_data(user_id)
-    tasks = await get_upcoming_tasks(user_id)
-    watchlists = await get_watchlist_data(user_id)
     operating_framework = await get_operating_framework(user_id)
     
     # Format the template with dynamic data
     formatted_prompt = template.format(
         current_datetime=current_datetime,
         market_info=market_info,
-        account_data=account_data,
-        positions=positions,
-        orders=orders,
-        tasks=tasks,
-        watchlists=watchlists,
         operating_framework=operating_framework
     )
     
@@ -294,4 +284,52 @@ def get_technical_analyst_prompt() -> str:
 def get_guardrail_prompt() -> str:
     """Get the guardrail prompt (no dynamic data needed)."""
     return load_prompt_template('guardrail')
+
+
+async def get_background_information(
+    user_id: int,
+    include_account: bool = True,
+    include_positions: bool = True,
+    include_orders: bool = True,
+    include_tasks: bool = True,
+    include_watchlists: bool = True
+) -> str:
+    """
+    Build background information section for injection into user messages.
+    
+    Args:
+        user_id: Telegram user ID to filter user-specific data
+        include_account: Include account data (cash, equity, buying power)
+        include_positions: Include open positions
+        include_orders: Include open orders
+        include_tasks: Include upcoming tasks
+        include_watchlists: Include watchlists
+    
+    Returns:
+        Formatted background information string
+    """
+    sections = []
+    
+    if include_account:
+        account_data = await get_account_data(user_id)
+        sections.append(f"## Account Data:\n{account_data}")
+    
+    if include_positions:
+        positions = await get_positions_data(user_id)
+        sections.append(f"## Open Positions:\n{positions}")
+    
+    if include_orders:
+        orders = await get_orders_data(user_id)
+        sections.append(f"## Open Orders:\n{orders}")
+    
+    if include_tasks:
+        tasks = await get_upcoming_tasks(user_id)
+        sections.append(f"## Upcoming Tasks:\n{tasks}")
+    
+    if include_watchlists:
+        watchlists = await get_watchlist_data(user_id)
+        sections.append(f"## Watchlists:\n{watchlists}")
+    
+    content = "\n\n".join(sections)
+    return f"<background_information>\n{content}\n</background_information>"
 

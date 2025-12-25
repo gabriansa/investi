@@ -109,17 +109,3 @@ Creating, monitoring, and managing orders.
 - [Task ID] / [Ticker] / [Type]: When this triggers and what action it prompts
 ```
 </output_description>
-
-<background_information>
-## Account Data:
-{account_data}
-
-## Open Positions:
-{positions}
-
-## Open Orders:
-{orders}
-
-## Upcoming Tasks:
-{tasks}
-</background_information>

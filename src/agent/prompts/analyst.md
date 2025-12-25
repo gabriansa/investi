@@ -127,14 +127,3 @@ Delegate for mathematical, chart-based, or historical price analysis:
 - [Watchlist ID] / [Watchlist Name]: Symbols added/removed and rationale
 ```
 </output_description>
-
-<background_information>
-## Account Data:
-{account_data}
-
-## Upcoming Tasks:
-{tasks}
-
-## Watchlists:
-{watchlists}
-</background_information>

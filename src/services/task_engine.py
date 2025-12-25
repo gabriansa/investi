@@ -267,7 +267,7 @@ async def _execute_task(task, send_message_callback, min_credits_to_run: float, 
     )
 
     try:
-        message = f"<task_triggered>{json.dumps(task_context, indent=2, default=datetime_encoder)}</task_triggered>"
+        message = f"<task_triggered>\n{json.dumps(task_context, indent=2, default=datetime_encoder)}\n</task_triggered>"
         result = await agent.run(message, use_session=False)
         await send_message_callback(result, telegram_user_id)
         logger.info(f"Task {task_id} completed for user {telegram_user_id}")

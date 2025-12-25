@@ -176,7 +176,7 @@ async def _process_message(update: Update, context: ContextTypes.DEFAULT_TYPE, c
         alpaca_api_key=user['alpaca_api_key'],
         alpaca_secret_key=user['alpaca_secret_key']
     )
-    message = f"<user_message>{text}</user_message>"
+    message = f"<user_message>\n{text}\n</user_message>"
     result = await agent.run(message)
     
     logger.info(f"Completed request for user {telegram_user_id}")

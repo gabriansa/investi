@@ -4,26 +4,26 @@ agents:
     max_turns: 100
     reasoning_effort: "high"
   trader:
-    model_name: "openai/gpt-5.2"
+    model_name: "openai/gpt-5-mini"
     max_turns: 100
     reasoning_effort: "high"
   analyst:
-    model_name: "openai/gpt-5.2"
+    model_name: "openai/gpt-5-mini"
     max_turns: 100
     reasoning_effort: "high"
   technical_analyst:
-    model_name: "openai/gpt-5.2"
+    model_name: "openai/gpt-5-mini"
     max_turns: 100
     reasoning_effort: "high"
   guardrail:
-    model_name: "openai/gpt-4o-mini"
+    model_name: "openai/gpt-5-nano"
 
 embeddings:
   model_name: "openai/text-embedding-3-large"
 
 tools:
   web_search_model: "perplexity/sonar-pro-search"
-  screener_finder_model: "openai/gpt-4o-mini"
+  screener_finder_model: "openai/gpt-5-nano"
 
 credits:
   min_credits_warning: 10

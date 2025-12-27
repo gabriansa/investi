@@ -43,7 +43,7 @@ def fetch_historical_price_data(
 @function_tool
 def get_current_market_quote(
     ctx: RunContextWrapper[Context],
-    ticker_symbol: str | list[str],
+    ticker_symbol: list[str],
     interval: Literal["1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h", "4h", "1d", "5d", "1wk", "1mo", "3mo"],
     rolling_period_hours: int = 24,
     ):
@@ -54,15 +54,12 @@ def get_current_market_quote(
     pricing, exchange info, and currency. Use this for quick market overviews or current state checks.
 
     Args:
-        ticker_symbol (required): Single ticker symbol (e.g., "AAPL") or list of symbols (e.g., ["AAPL", "MSFT", "GOOGL"]).
+        ticker_symbol (required): List of ticker symbols (e.g., ["AAPL"] for single or ["AAPL", "MSFT", "GOOGL"] for multiple).
         interval (required): Time interval for quote data. Options: 1m, 2m, 5m, 15m, 30m, 60m, 90m, 1h, 4h, 1d, 5d, 1wk, 1mo, 3mo.
         rolling_period_hours (optional): Time window in hours to calculate rolling price change (default: 24).
     """
-    # Handle both single symbol and list of symbols
-    symbols = [ticker_symbol] if isinstance(ticker_symbol, str) else ticker_symbol
-    
     results = {}
-    for symbol in symbols:
+    for symbol in ticker_symbol:
         success, data = ctx.context.yfinance_api.quote(
             symbol=symbol, 
             interval=interval, 
@@ -70,24 +67,20 @@ def get_current_market_quote(
         )
         results[symbol] = data if success else {"error": data}
     
-    # Return unwrapped result for single symbol (backward compatible)
-    return results[symbols[0]] if len(symbols) == 1 else results
+    return results
 
 @function_tool
 async def find_screeners(
     ctx: RunContextWrapper[Context],
-    search_query: str | list[str],
+    search_query: list[str],
     ):
     """
     Finds available screeners using natural language search.
     Returns a list of screener names and descriptions that can then be used with execute_screener.
     
     Args:
-        search_query (required): Single search query (e.g., "tech gainers") or list of queries (e.g., ["tech gainers", "crypto stats", "dividend stocks"]).
+        search_query (required): List of search queries (e.g., ["tech gainers"] for single or ["tech gainers", "crypto stats", "dividend stocks"] for multiple).
     """
-    # Handle both single query and list of queries
-    queries = [search_query] if isinstance(search_query, str) else search_query
-    
     # Get available screeners (needed for all queries)
     success, available_screeners = ctx.context.yfinance_api.available_screeners()
     if not success:
@@ -104,7 +97,7 @@ async def find_screeners(
     system_prompt = load_prompt("find_screeners.md").format(available_screeners=available_screeners_str)
 
     results = {}
-    for query in queries:
+    for query in search_query:
         try:
             completion = await ctx.context.client.chat.completions.parse(
                 model=ctx.context.screener_finder_model,
@@ -125,22 +118,21 @@ async def find_screeners(
         except Exception as e:
             results[query] = {"error": f"Failed to search for screeners: {str(e)}"}
     
-    # Return unwrapped result for single query (backward compatible)
-    return results[queries[0]] if len(queries) == 1 else results
+    return results
     
 @function_tool
 def execute_screener(
     ctx: RunContextWrapper[Context],
-    screener_name: str,
+    screener_name: list[str],
     outputsize: int = 10,
     ):
     """
-    Executes a screener and returns the ranked results. Use find_screeners first to find valid screener names.
-    Returns a ranked list of symbols matching the screener criteria.
+    Executes one or more screeners and returns the ranked results. Use find_screeners first to find valid screener names.
+    Returns a ranked list of symbols matching the screener criteria for each screener.
 
     Args:
-        screener_name (required): The exact screener name to execute (obtained from screener discovery tools).
-        outputsize (optional): Number of results to return (default: 10).
+        screener_name (required): List of screener names to execute (e.g., ["day_gainers"] for single or ["day_gainers", "most_actives"] for multiple).
+        outputsize (optional): Number of results to return per screener (default: 10).
     """
     KEEP_FIELDS = [
         # Identification
@@ -194,25 +186,29 @@ def execute_screener(
         "trailingAnnualDividendYield",
     ]
 
-    success, data = ctx.context.yfinance_api.screener(
-        screener_name=screener_name,
-        outputsize=outputsize
-    )
-    if success:
-        # Filter to keep only relevant fields
-        filtered_values = [
-            {k: v for k, v in record.items() if k in KEEP_FIELDS}
-            for record in data.get("values", [])
-        ]
-        data["values"] = filtered_values
-        return data
-    else:
-        return {"error": data}
+    results = {}
+    for screener in screener_name:
+        success, data = ctx.context.yfinance_api.screener(
+            screener_name=screener,
+            outputsize=outputsize
+        )
+        if success:
+            # Filter to keep only relevant fields
+            filtered_values = [
+                {k: v for k, v in record.items() if k in KEEP_FIELDS}
+                for record in data.get("values", [])
+            ]
+            data["values"] = filtered_values
+            results[screener] = data
+        else:
+            results[screener] = {"error": data}
+    
+    return results
 
 @function_tool
 def search_for_symbols(
     ctx: RunContextWrapper[Context],
-    search_query: str, 
+    search_query: list[str], 
     outputsize: int = 10,
     ):
     """
@@ -221,22 +217,26 @@ def search_for_symbols(
     Returns matching symbols with basic info (name, exchange, type) sorted by similarity.
 
     Args:
-        search_query (required): Guessed ticker symbol (e.g., "AAPL", "BTC-USD", "TSLA").
-        outputsize (optional): Maximum number of results to return, 1-50 (default: 10).
+        search_query (required): List of guessed ticker symbols (e.g., ["AAPL"] for single or ["AAPL", "BTC-USD", "TSLA"] for multiple).
+        outputsize (optional): Maximum number of results to return per query, 1-50 (default: 10).
     """
     if outputsize > 50 or outputsize < 1:
         return {"error": f"outputsize must be between 1 and 50, got {outputsize}"}
     
-    success, data = ctx.context.alpaca_api.symbol_search(query=search_query, outputsize=outputsize)
-    if success:
-        return data
-    else:
-        return {"error": data}
+    results = {}
+    for query in search_query:
+        success, data = ctx.context.alpaca_api.symbol_search(query=query, outputsize=outputsize)
+        if success:
+            results[query] = data
+        else:
+            results[query] = {"error": data}
+    
+    return results
 
 @function_tool
 def get_company_profile(
     ctx: RunContextWrapper[Context],
-    ticker_symbol: str | list[str],
+    ticker_symbol: list[str],
     ):
     """
     Retrieves comprehensive company/asset information for fundamental research.
@@ -245,7 +245,7 @@ def get_company_profile(
     Use to understand what a company does or gather fundamentals for investment decisions.
 
     Args:
-        ticker_symbol (required): Single ticker symbol (e.g., "AAPL") or list of symbols (e.g., ["AAPL", "MSFT", "GOOGL"]).
+        ticker_symbol (required): List of ticker symbols (e.g., ["AAPL"] for single or ["AAPL", "MSFT", "GOOGL"] for multiple).
     """
     KEEP_FIELDS = [
         # Identification
@@ -298,11 +298,8 @@ def get_company_profile(
         "heldPercentInsiders", "heldPercentInstitutions",
     ]
     
-    # Handle both single symbol and list of symbols
-    symbols = [ticker_symbol] if isinstance(ticker_symbol, str) else ticker_symbol
-    
     results = {}
-    for symbol in symbols:
+    for symbol in ticker_symbol:
         success, data = ctx.context.yfinance_api.profile(symbol=symbol)
         if success:
             # Filter to keep only relevant fields
@@ -311,8 +308,7 @@ def get_company_profile(
         else:
             results[symbol] = {"error": data}
     
-    # Return unwrapped result for single symbol (backward compatible)
-    return results[symbols[0]] if len(symbols) == 1 else results
+    return results
 
 @function_tool
 def calculate_technical_indicator(

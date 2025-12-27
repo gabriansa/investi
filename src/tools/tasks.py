@@ -306,28 +306,31 @@ async def get_tasks(
 @function_tool
 async def remove_task(
     ctx: RunContextWrapper[Context],
-    task_id: str,
+    task_id: list[str],
     ):
     """
-    Permanently removes a task. Returns confirmation when deleted.
+    Permanently removes one or more tasks. Returns confirmation when deleted.
 
     Args:
-        task_id (required): The unique UUID of the task to delete. Obtain from get_tasks.
+        task_id (required): List of task IDs to delete (e.g., ["uuid1"] for single or ["uuid1", "uuid2", "uuid3"] for multiple). Obtain from get_tasks.
     """
+    results = {}
     async with get_async_db_connection() as conn:
-        # Check if task exists and belongs to user
-        row = await conn.fetchrow(
-            "SELECT task_id FROM tasks WHERE task_id = $1 AND telegram_user_id = $2",
-            task_id, ctx.context.user_id
-        )
-        if row is None:
-            return {"error": f"Task with ID {task_id} not found"}
-        
-        # Delete the task
-        await conn.execute(
-            "DELETE FROM tasks WHERE task_id = $1 AND telegram_user_id = $2",
-            task_id, ctx.context.user_id
-        )
+        for tid in task_id:
+            # Check if task exists and belongs to user
+            row = await conn.fetchrow(
+                "SELECT task_id FROM tasks WHERE task_id = $1 AND telegram_user_id = $2",
+                tid, ctx.context.user_id
+            )
+            if row is None:
+                results[tid] = {"error": f"Task with ID {tid} not found"}
+            else:
+                # Delete the task
+                await conn.execute(
+                    "DELETE FROM tasks WHERE task_id = $1 AND telegram_user_id = $2",
+                    tid, ctx.context.user_id
+                )
+                results[tid] = f"Task with ID {tid} deleted successfully"
     
-    return f"Task with ID {task_id} deleted successfully"
+    return results
 

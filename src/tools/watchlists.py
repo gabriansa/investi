@@ -71,36 +71,39 @@ async def create_watchlist(
 @function_tool
 async def remove_watchlist(
     ctx: RunContextWrapper[Context],
-    watchlist_id: str,
+    watchlist_id: list[str],
     ):
     """
-    Permanently removes a watchlist and all its tracked assets. Returns confirmation when deleted.
+    Permanently removes one or more watchlists and all their tracked assets. Returns confirmation when deleted.
 
     Args:
-        watchlist_id (required): Watchlist ID to delete.
+        watchlist_id (required): List of watchlist IDs to delete (e.g., ["uuid1"] for single or ["uuid1", "uuid2"] for multiple).
     """
+    results = {}
     async with get_async_db_connection() as conn:
-        # Check if watchlist exists and belongs to user
-        row = await conn.fetchrow(
-            "SELECT watchlist_id FROM watchlists WHERE watchlist_id = $1 AND telegram_user_id = $2",
-            watchlist_id, ctx.context.user_id
-        )
-        if row is None:
-            return {"error": f"Watchlist with ID {watchlist_id} not found."}
-        
-        # Delete the watchlist
-        await conn.execute(
-            "DELETE FROM watchlists WHERE watchlist_id = $1 AND telegram_user_id = $2",
-            watchlist_id, ctx.context.user_id
-        )
-
-    return f"Watchlist with ID {watchlist_id} deleted successfully."
+        for wid in watchlist_id:
+            # Check if watchlist exists and belongs to user
+            row = await conn.fetchrow(
+                "SELECT watchlist_id FROM watchlists WHERE watchlist_id = $1 AND telegram_user_id = $2",
+                wid, ctx.context.user_id
+            )
+            if row is None:
+                results[wid] = {"error": f"Watchlist with ID {wid} not found"}
+            else:
+                # Delete the watchlist
+                await conn.execute(
+                    "DELETE FROM watchlists WHERE watchlist_id = $1 AND telegram_user_id = $2",
+                    wid, ctx.context.user_id
+                )
+                results[wid] = f"Watchlist with ID {wid} deleted successfully"
+    
+    return results
 
 @function_tool
 async def modify_watchlist_symbols(
     ctx: RunContextWrapper[Context],
     watchlist_id: str,
-    ticker_symbol: str | list[str],
+    ticker_symbol: list[str],
     action: Literal["add", "remove"],
     ):
     """
@@ -108,12 +111,10 @@ async def modify_watchlist_symbols(
 
     Args:
         watchlist_id (required): Watchlist ID to modify.
-        ticker_symbol (required): Single ticker symbol (e.g., "AAPL") or list of symbols (e.g., ["AAPL", "MSFT", "GOOGL"]).
+        ticker_symbol (required): List of ticker symbols (e.g., ["AAPL"] for single or ["AAPL", "MSFT", "GOOGL"] for multiple).
         action (required): Either "add" to add the symbol(s) or "remove" to remove them.
     """ 
-    # Handle both single symbol and list of symbols
-    symbols = [ticker_symbol] if isinstance(ticker_symbol, str) else ticker_symbol
-    symbols_upper = [s.upper() for s in symbols]
+    symbols_upper = [s.upper() for s in ticker_symbol]
     
     async with get_async_db_connection() as conn:
         row = await conn.fetchrow(

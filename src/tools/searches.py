@@ -8,7 +8,7 @@ from src.tools import load_prompt
 @function_tool
 async def search_sec_filings(
     ctx: RunContextWrapper[Context],
-    search_query: str,
+    search_query: list[str],
     filing_types: list[str] | None = None,
     company_name: str | None = None,
     financial_terms: list[str] | None = None,
@@ -22,7 +22,7 @@ async def search_sec_filings(
     Returns excerpts from filings with document types, dates, and citations.
 
     Args:
-        search_query (required): What to find (e.g., "semiconductor supply chain risks").
+        search_query (required): List of queries to search (e.g., ["semiconductor supply chain risks"] for single or ["supply chain", "earnings outlook"] for multiple).
         filing_types (optional): Document types - ["10-K"], ["10-Q"], ["8-K"], or combinations.
         company_name (optional): Company to focus on (e.g., "Tesla"). Omit for industry-wide search.
         financial_terms (optional): Target sections - ["earnings"], ["risk factors"], ["management discussion"], ["cash flow"].
@@ -43,60 +43,64 @@ async def search_sec_filings(
         
     
     system_prompt = load_prompt("sec_filings.md")
-
-    prompt = f"""Filing Types: {filing_types}
+    
+    results = {}
+    for query in search_query:
+        prompt = f"""Filing Types: {filing_types}
     Company Name: {company_name}
     Financial Terms: {financial_terms}
-    Search Query: {search_query}"""
-    
-    try:
-        extra_body = {
-            "search_mode": "sec",
-            "search_context_size": search_context_size,
-        }
+    Search Query: {query}"""
         
-        if search_after_date_str:
-            extra_body["search_after_date_filter"] = search_after_date_str
-        if search_before_date_str:
-            extra_body["search_before_date_filter"] = search_before_date_str
-        if search_recency_filter:
-            extra_body["search_recency_filter"] = search_recency_filter
+        try:
+            extra_body = {
+                "search_mode": "sec",
+                "search_context_size": search_context_size,
+            }
             
-        completion = await ctx.context.client.chat.completions.create(
-            model=ctx.context.web_search_model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": system_prompt
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
-            extra_body=extra_body
-        )
-        return completion.choices[0].message.content
-    except Exception as e:
-        return {"error": f"Error searching SEC filings: {str(e)}"}
+            if search_after_date_str:
+                extra_body["search_after_date_filter"] = search_after_date_str
+            if search_before_date_str:
+                extra_body["search_before_date_filter"] = search_before_date_str
+            if search_recency_filter:
+                extra_body["search_recency_filter"] = search_recency_filter
+                
+            completion = await ctx.context.client.chat.completions.create(
+                model=ctx.context.web_search_model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": system_prompt
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                extra_body=extra_body
+            )
+            results[query] = completion.choices[0].message.content
+        except Exception as e:
+            results[query] = {"error": f"Error searching SEC filings: {str(e)}"}
+    
+    return results
 
 @function_tool
 async def search_web(
     ctx: RunContextWrapper[Context],
-    search_query: str,
+    search_query: list[str],
     search_after_date: str | None = None,
     search_before_date: str | None = None,
     search_recency_filter: Literal["day", "week", "month", "year"] | None = None,
     search_context_size: Literal["low", "medium", "high"] | None = None,
     location_country: str | None = None,
     search_domain_filter: Literal["standard", "social"] = "standard",
-    ) -> str:
+    ) -> dict:
     """
     Searches the web for news, market analysis, and current events. 
     Returns synthesized results from multiple sources with citations.
 
     Args:
-        search_query (required): What to find (e.g., "Tesla Q4 earnings reactions").
+        search_query (required): List of queries to search (e.g., ["Tesla Q4 earnings reactions"] for single or ["Tesla earnings", "EV market trends"] for multiple).
         search_after_date (optional): Results after date in YYYY-MM-DD format.
         search_before_date (optional): Results before date in YYYY-MM-DD format.
         search_recency_filter (optional): Time filter - "day", "week", "month", "year".
@@ -140,26 +144,30 @@ async def search_web(
     
     if web_search_options:
         extra_body["web_search_options"] = web_search_options
-        
-    try:
-        # Make the request
-        completion = await ctx.context.client.chat.completions.create(
-            model=ctx.context.web_search_model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": load_prompt("web_search.md")
-                },
-                {
-                    "role": "user",
-                    "content": search_query
-                }
-            ],
-            extra_body=extra_body if extra_body else None
-        )
-        return completion.choices[0].message.content
     
-    except Exception as e:
-        return {"error": f"Error searching web: {str(e)}"}
+    results = {}
+    for query in search_query:
+        try:
+            # Make the request
+            completion = await ctx.context.client.chat.completions.create(
+                model=ctx.context.web_search_model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": load_prompt("web_search.md")
+                    },
+                    {
+                        "role": "user",
+                        "content": query
+                    }
+                ],
+                extra_body=extra_body if extra_body else None
+            )
+            results[query] = completion.choices[0].message.content
+        
+        except Exception as e:
+            results[query] = {"error": f"Error searching web: {str(e)}"}
+    
+    return results
 
 

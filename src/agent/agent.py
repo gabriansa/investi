@@ -141,13 +141,13 @@ class InvestiAgent:
             name="portfolio_manager",
             instructions=await get_portfolio_manager_prompt(self.user_id),
             tools=[
-                find_screeners, execute_screener,
+                # find_screeners, execute_screener,
                 get_current_market_quote,
                 create_note, search_notes, get_notes_by_id,
                 get_orders,
                 get_positions,
                 set_one_time_task, set_recurring_task, set_conditional_task, get_tasks, remove_task,
-                search_web,
+                # search_web,
                 get_watchlist, create_watchlist, remove_watchlist, modify_watchlist_symbols,
                 write_todos,
                 self._create_analyst_tool(),
@@ -173,7 +173,7 @@ class InvestiAgent:
                 include_account=True,
                 include_positions=False,
                 include_orders=False,
-                include_tasks=True,
+                include_tasks=False,
                 include_watchlists=True
             )
             input_with_background = f"{background_info}\n\n<instructions>{instructions}</instructions>"
@@ -203,7 +203,7 @@ class InvestiAgent:
                 include_account=True,
                 include_positions=True,
                 include_orders=True,
-                include_tasks=True,
+                include_tasks=False,
                 include_watchlists=False
             )
             input_with_background = f"{background_info}\n\n<instructions>{instructions}</instructions>"
@@ -230,7 +230,7 @@ class InvestiAgent:
             include_account=True,
             include_positions=True,
             include_orders=True,
-            include_tasks=True,
+            include_tasks=False,
             include_watchlists=True
         )
         input_with_background = f"{background_info}\n\n{input}"

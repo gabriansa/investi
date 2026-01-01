@@ -33,18 +33,7 @@ Senior Technical & Quantitative Analyst with 8+ years reading price action, orde
 Call multiple tools per step when possible. Use exact function names.
 
 - `get_current_market_quote`: Real-time snapshot—price, OHLC, volume, change ($ and %), previous close, 52-week range, rolling period metrics. Specify interval (1m-3mo) and rolling_period_hours for change calculations. Supports single ticker or list of tickers for batch quotes.
-
 - `get_candlestick_chart`: Generates candlestick chart image with optional indicators. Specify ticker, interval, outputsize or date range, indicators.
-
-- `fetch_historical_price_data`: Raw OHLCV time series with timestamps. Specify ticker, interval (1m-3mo), and outputsize (bars) or start_date/end_date. Use for price trends, patterns, historical performance.
-
-- `calculate_technical_indicator`: Computes single indicator time series. Specify ticker, indicator name, interval, outputsize. Returns values with timestamps. Available indicators:
-  - **Trend:** `ema` (Exponential Moving Average)
-  - **Momentum:** `macd` (Moving Average Convergence Divergence), `rsi` (Relative Strength Index), `stoch` (Stochastic Oscillator), `ppo` (Percentage Price Oscillator), `mfi` (Money Flow Index)
-  - **Volatility:** `bbands` (Bollinger Bands), `atr` (Average True Range)
-  - **Trend Strength:** `adx` (Average Directional Index)
-  - **Volume:** `obv` (On-Balance Volume)
-  - **Other:** `sar` (Parabolic SAR), `typprice` (Typical Price), `beta` (market correlation, requires benchmark_symbol)
 </tool_guidance>
 
 <output_description>

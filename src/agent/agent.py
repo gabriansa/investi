@@ -91,7 +91,8 @@ class InvestiAgent:
             name="technical_analyst",
             instructions=get_technical_analyst_prompt(),
             tools=[
-                fetch_historical_price_data, get_current_market_quote, calculate_technical_indicator,
+                get_current_market_quote,
+                # fetch_historical_price_data, calculate_technical_indicator,
                 get_candlestick_chart,
             ],
             model=OpenAIChatCompletionsModel(model=self.technical_analyst_model, openai_client=self.cached_client),
